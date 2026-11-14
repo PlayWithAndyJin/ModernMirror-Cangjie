@@ -1,0 +1,33 @@
+# 运行时数据 数据库 缓存 私有包 审计日志与主密钥都不入库
+data/
+*.db
+*.db-wal
+*.db-shm
+audit.log
+audit.log.*
+master.key
+modernmirror.env
+.env
+
+# 前端依赖与构建产物
+node_modules/
+frontend/dist/
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# 编辑器与系统文件
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 仓颉依赖与构建产物
+.deps/
+target/
+runtime/
+*.o
+*.a
+*.fpk
+*.tgz
