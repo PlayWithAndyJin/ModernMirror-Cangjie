@@ -16,7 +16,8 @@ One entry point for every package source in your network, with local caching, ac
 - Settings are available to every role: regular users can enable or disable their own MFA and manage their own API keys
 - Repositories can allow anonymous downloads, which solves plain-HTTP clients such as Go and CocoaPods that cannot send credentials
 - Client configuration for 15 ecosystems, with a "Configure" button available to regular users for repositories they can read
-- Absolute download URLs in npm, pub, crates, and NuGet metadata are rewritten back to this proxy so artifacts are cached
+- Absolute download URLs in pypi, npm, pub, crates, and NuGet metadata are rewritten back to this proxy so artifacts are cached
+- pip wheels and sdists no longer bypass the proxy; Range requests on cold cache fetch the full file before serving a segment
 - The built-in AI configuration skill at `skills/SKILL.md` is served at `/skill/modernmirror-config/SKILL.md`
 
 ## Design goals

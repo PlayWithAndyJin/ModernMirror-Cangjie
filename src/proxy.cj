@@ -396,15 +396,61 @@ func getRepo(repoName: String): DbRow {
     }
 }
 
+func originOf(url: String): String {
+    match (url.indexOf("://")) {
+        case Some(s) =>
+            let rest = url[s + 3..]
+            return match (rest.indexOf("/")) {
+                case Some(j) => url[0..s + 3 + j]
+                case None => url
+            }
+        case None => return ""
+    }
+}
+
+func trimTrailingSlash(value: String): String {
+    var out = value
+    while (out.endsWith("/")) {
+        out = out[0..out.size - 1]
+    }
+    return out
+}
+
+// 用户常把 PyPI 上游写成 https://host/simple, 而代理路径本身已经包含 /simple/,
+// 这里统一去掉重复后缀, 避免请求变成 /simple/simple/。
+func pypiBase(url: String): String {
+    var out = trimTrailingSlash(url)
+    if (out.endsWith("/simple")) {
+        out = trimTrailingSlash(out[0..out.size - 7])
+    }
+    return out
+}
+
 // 取上游基地址; crates 的 sparse 索引与 .crate 文件分属不同主机,
 // 索引侧把 dl 指向本代理的 /crates/ 路径, 这里再映射回 static.crates.io。
+// PyPI 官方索引里的包文件地址指向 files.pythonhosted.org, 与主站不同主机,
+// 因此 /packages/ 路径需要映射到文件主机; 其他镜像仍使用镜像自身的包路径。
 func proxyUpstreamBases(repoRow: DbRow, subPath: String): ArrayList<String> {
-    if (vText(repoRow, "type") == "crates" && subPath.startsWith("crates/")) {
+    let rtype = vText(repoRow, "type")
+    if (rtype == "crates" && subPath.startsWith("crates/")) {
         let out = ArrayList<String>()
         out.add("https://static.crates.io")
         return out
     }
-    return upstreamUrls(repoRow)
+    let urls = upstreamUrls(repoRow)
+    if (rtype != "pypi") {
+        return urls
+    }
+    let out = ArrayList<String>()
+    for (u in urls) {
+        let base = pypiBase(u)
+        if (subPath.startsWith("packages/") && originOf(base) == "https://pypi.org") {
+            out.add("https://files.pythonhosted.org")
+        } else {
+            out.add(base)
+        }
+    }
+    return out
 }
 
 func proxyBaseUrl(ctx: HttpContext, repoName: String): String {
@@ -419,17 +465,9 @@ func proxyBaseUrl(ctx: HttpContext, repoName: String): String {
 func upstreamOrigins(urls: ArrayList<String>): ArrayList<String> {
     let out = ArrayList<String>()
     for (u in urls) {
-        match (u.indexOf("://")) {
-            case Some(s) =>
-                let rest = u[s + 3..]
-                let origin = match (rest.indexOf("/")) {
-                    case Some(j) => u[0..s + 3 + j]
-                    case None => u
-                }
-                if (!origin.isEmpty()) {
-                    out.add(origin)
-                }
-            case None => ()
+        let origin = originOf(u)
+        if (!origin.isEmpty()) {
+            out.add(origin)
         }
     }
     return out
@@ -447,13 +485,18 @@ func rewriteCratesConfig(raw: String, base: String, needAuth: Bool): String {
 
 func needsProxyRewrite(repoRow: DbRow, path: String, contentType: String): Bool {
     let rtype = vText(repoRow, "type")
+    let ct = contentType.toAsciiLower()
+    if (rtype == "pypi") {
+        // simple 索引是 HTML, JSON API 也可能被前端工具使用
+        return ct.contains("html") || ct.contains("json")
+    }
     if (rtype != "npm" && rtype != "pub" && rtype != "nuget" && rtype != "crates") {
         return false
     }
     if (rtype == "crates") {
         return path == "config.json"
     }
-    return contentType.toAsciiLower().contains("json")
+    return ct.contains("json")
 }
 
 // 把上游元数据里的绝对地址改写回本代理, 让客户端后续的包文件请求仍然经过缓存。
@@ -474,6 +517,9 @@ func rewriteProxyFile(ctx: HttpContext, repoRow: DbRow, repoName: String, path: 
         if (rtype == "crates") {
             out = rewriteCratesConfig(text, base, vInt(repoRow, "anonymous") != 1)
         } else {
+            if (rtype == "pypi") {
+                out = out.replace("https://files.pythonhosted.org", base)
+            }
             for (origin in upstreamOrigins(upstreamUrls(repoRow))) {
                 out = out.replace(origin, base)
             }
@@ -727,8 +773,10 @@ func downloadAndRespond(ctx: HttpContext, targets: ArrayList<String>, repoName: 
     var upstreamUrl = ""
     for (u in targets) {
         try {
+            // 冷缓存时必须取完整文件: 若把 Range 透传给上游, 只会拿到 206 分段,
+            // 随后会被当作完整文件校验和缓存, 导致哈希校验失败或缓存损坏。
             let candidate = upstreamGet(u, ifNoneMatch: ifNoneMatch,
-                ifModifiedSince: ifModifiedSince, range: range, userAgent: userAgent)
+                ifModifiedSince: ifModifiedSince, userAgent: userAgent)
             if (candidate.status < 500) {
                 resp = Some(candidate)
                 upstreamUrl = u

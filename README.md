@@ -16,7 +16,8 @@
 - 「系统设置」对所有角色开放：普通用户可自助绑定或关闭 MFA、生成与吊销自己的 API 密钥
 - 仓库新增「允许匿名下载」开关，解决 Go、CocoaPods 等客户端在纯 HTTP 下无法携带凭据的问题
 - 补齐 15 种生态的客户端配置，并为普通用户开放「配置」按钮，可复制自己有下载权限的仓库命令
-- 服务端改写 npm、pub、crates、NuGet 元数据中的绝对下载地址，包文件重新经过代理并进入缓存
+- 服务端改写 pypi、npm、pub、crates、NuGet 元数据中的绝对下载地址，包文件重新经过代理并进入缓存
+- pip 的 wheel/sdist 不再直连 files.pythonhosted.org；冷缓存下的 Range 请求也会先取完整文件再返回分段
 - 内置 AI 配置技能 `skills/SKILL.md`，登录后可访问 `/skill/modernmirror-config/SKILL.md`
 
 ## 设计目标

@@ -119,7 +119,7 @@ export default function Docs() {
         </Paragraph>
         <Paragraph><b>各类型客户端接入位置</b></Paragraph>
         <ol style={{ paddingLeft: 20 }}>
-          <Li>pypi: <Text code>pip config set global.index-url</Text> 指向 <Text code>/proxy/仓库/simple/</Text>, 凭据写在 URL 的 Basic 位置。</Li>
+          <Li>pypi: <Text code>pip config set global.index-url</Text> 指向 <Text code>/proxy/仓库/simple/</Text>, 凭据写在 URL 的 Basic 位置; 上游可填 <Text code>https://pypi.org</Text> 或镜像根地址, 带 <Text code>/simple</Text> 也会自动去重。</Li>
           <Li>npm: registry 指向 <Text code>/proxy/仓库/</Text>, 密钥写入 <Text code>.npmrc</Text> 的 <Text code>//主机/路径/:_authToken</Text>; registry 地址里不能带 query。</Li>
           <Li>maven: <Text code>settings.xml</Text> 的 mirror 指向代理, 账密配在同 id 的 server 中。</Li>
           <Li>nuget: <Text code>dotnet nuget add source</Text> 指向 <Text code>/proxy/仓库/v3/index.json</Text>, 上游应为 <Text code>https://api.nuget.org</Text>。</Li>
@@ -132,9 +132,10 @@ export default function Docs() {
           <Li>hackage、cran、luarocks、cocoapods 与通用文件(apt/apk/dnf/pacman)分别按各自配置项指向代理地址即可。</Li>
         </ol>
         <Paragraph type="secondary">
-          服务端会把 npm 的 <Text code>dist.tarball</Text>、pub 的 <Text code>archive_url</Text>、crates 的
-          <Text code>config.json</Text> 与 NuGet v3 服务索引里的绝对地址改写回本代理, 因此这些生态的包文件也会真正经过缓存;
-          其余生态本身返回的就是相对路径。镜像仓库页面每一行的「客户端配置」按钮会按类型生成可直接复制的命令。
+          服务端会把 pypi 索引里的 <Text code>files.pythonhosted.org</Text>、npm 的 <Text code>dist.tarball</Text>、
+          pub 的 <Text code>archive_url</Text>、crates 的 <Text code>config.json</Text> 与 NuGet v3 服务索引里的绝对地址改写回本代理,
+          因此这些生态的包文件也会真正经过缓存; 其余生态本身返回的就是相对路径。
+          镜像仓库页面每一行的「客户端配置」按钮会按类型生成可直接复制的命令。
         </Paragraph>
       </Block>
 

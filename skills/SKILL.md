@@ -31,7 +31,7 @@ description: 将本机的 pip, npm, Go, Maven/Gradle, apt/yum 等软件源配置
 
 先确认镜像仓库页面已存在对应类型的仓库与正确上游。应用内「镜像仓库」页每行的「客户端配置」按钮会按类型生成可直接复制的命令, 优先采用它。
 
-- **pip**: `pip config set global.index-url "http://任意用户名:$TOKEN@$HOST:$PORT/proxy/<仓库>/simple/"`; HTTP 部署再加 `global.trusted-host=$HOST`。
+- **pip**: `pip config set global.index-url "http://任意用户名:$TOKEN@$HOST:$PORT/proxy/<仓库>/simple/"`; HTTP 部署再加 `global.trusted-host=$HOST`。索引里的包文件地址会被改写到代理, wheel/sdist 同样进入缓存。
 - **npm**: registry 设为 `http://$HOST:$PORT/proxy/<仓库>/`, 再执行 `npm config set //$HOST:$PORT/proxy/<仓库>/:_authToken "$TOKEN"`; registry 地址不能带 query。
 - **Go**: `export GOPROXY="http://$HOST:$PORT/proxy/<仓库>"`、`export GOSUMDB=off`; 必须使用匿名仓库。
 - **Maven/Gradle**: `settings.xml` 的 mirror 指向代理, 同 id 的 `<server>` 填任意用户名与 TOKEN。
