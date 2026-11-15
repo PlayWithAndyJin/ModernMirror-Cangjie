@@ -20,19 +20,36 @@ One entry point for every package source in your network, with local caching, ac
 
 ## Features
 
-- **Transparent proxy cache**: the first request fetches from upstream and stores the artifact; later requests read from local disk. ETag revalidation and `X-Cache-Status` are supported
-- **Many ecosystems out of the box**: PyPI, npm, Go Modules, Maven/Gradle, NuGet, RubyGems, Crates, Conan, pub, Hex, Hackage, CRAN, LuaRocks, CocoaPods, and apt
-- **Anonymous read-only repositories**: enable anonymous downloads per repository; uploads and private package APIs still require authentication
-- **Response rewriting**: npm `dist.tarball`, pub `archive_url`, crates `config.json.dl`, and NuGet service-index `@id` values point back to this proxy
-- **Upstream failover**: each repository supports a primary upstream plus ordered fallbacks
-- **Cache governance**: per-repository hit and size statistics, quotas, LRU eviction, retention cleanup, and a daily scheduled cleanup
-- **Private packages**: upload internal artifacts, download them directly, and expose a PEP 503 simple index
-- **Users and permissions**: multi-user login, group-to-repository read and write matrix, and bulk member import
-- **MFA**: standard TOTP compatible with any authenticator, with enforcement policy, self-service toggling, and admin reset
-- **API keys**: issue and revoke credentials for automation and command line use
-- **Integrity checks**: PyPI index hashes and npm `integrity` values are verified before anything is cached
-- **Security**: PBKDF2-SM3 for passwords, SM4 in authenticated mode for sensitive data, legacy data migration supported
-- **Audit log**: logins, repository changes, uploads, deletions, and integrity failures are written to a protected audit log
+### Proxy and cache
+
+- **Path-based transparent proxy**: `/proxy/<repo>/<original path>` forwards to the upstream per repository while preserving subpaths and query strings, so clients do not need to understand the cache layer
+- **Content-addressed cache**: cached files are sharded by `SHA-256(repo:path)` and written through a temporary file followed by an atomic rename; cache hits stream directly from disk
+- **Conditional requests and ranges**: upstream `ETag` values are retained, with `If-None-Match`/304 revalidation and `Range` 206/416 support; a cold-cache range request fetches and verifies the full object before serving a segment
+- **Upstream failover and stale fallback**: primary and backup upstreams are tried in order, and old cache entries are served when upstreams return 5xx or time out; `X-Cache-Status` reports `fresh`, `hit`, `revalidated`, or `stale`
+
+### Ecosystems and protocols
+
+- **15 ecosystems**: PyPI, npm, Go Modules, Maven/Gradle, NuGet, RubyGems, Crates, Conan, Dart pub, Hex, Hackage, CRAN, LuaRocks, CocoaPods, and file-based apt/apk/dnf/pacman repositories
+- **Metadata URL rewriting**: `files.pythonhosted.org` in PyPI simple indexes, npm `dist.tarball`, pub `archive_url`, crates `config.json.dl`, and NuGet v3 `@id` values are rewritten to this proxy; crates download paths map to `static.crates.io`
+- **Cross-host redirects and SNI**: up to five 302 hops are followed server-side, rebuilding the TLS client with the target host's SNI, which covers NuGet/CDN cross-origin redirects
+- **Private packages**: upload, direct download, and a PEP 503 simple index, with independent authentication for private package APIs
+
+### Access control and security
+
+- **Multiple credential schemes**: HTTP Basic (any username, API key as password), `Authorization: Bearer`, `Session-Token`, `X-Auth-Token`, and `?token=` for one-shot requests
+- **Group ACL and anonymous read-only repositories**: per-group `can_download`/`can_upload` repository grants; repositories can allow anonymous reads while uploads and private package APIs remain authenticated; administrators are subject to the same proxy ACL
+- **Sessions and API keys**: session tokens are stored as SM3 hashes with sliding expiry; API keys keep only a prefix and hash and can be revoked individually
+- **TOTP MFA**: standard TOTP compatible with any authenticator, with self-service toggling, an administrator enforcement policy, and admin reset
+- **Integrity verification**: PyPI index hashes and npm `dist.integrity` are checked before caching; mismatches are rejected and audited
+- **Chinese cryptography**: PBKDF2-SM3 for passwords, SM4-CBC with HMAC-SM3 for sensitive data, and backward-compatible data migration
+- **Encrypted audit log**: logins, repository changes, uploads, deletions, permission changes, and integrity failures are encrypted at rest
+
+### Operations and observability
+
+- **Cache governance**: per-repository quotas with LRU eviction by `last_hit_at`/`hits`, plus retention cleanup and a daily scheduled cleanup
+- **Statistics and API docs**: per-repository hit rate, file count, and disk usage, with built-in `/docs`, `/redoc`, and `/openapi.json`
+- **Single executable and SQLite WAL**: no external services; metadata and cache are separate, and SQLite runs in WAL mode with a 30-second busy timeout
+- **Built-in onboarding docs and AI skill**: the web docs cover 15 client configurations, and `/skill/modernmirror-config/SKILL.md` lets AI tools configure or roll back clients
 
 ## Screenshots
 

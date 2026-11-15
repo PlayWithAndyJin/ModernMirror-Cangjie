@@ -20,19 +20,36 @@
 
 ## 特性
 
-- **透明代理缓存**：首次请求回源并落盘，后续命中直接读本地磁盘；支持 ETag 条件请求与 `X-Cache-Status` 观测
-- **多生态开箱即用**：PyPI、npm、Go Modules、Maven/Gradle、NuGet、RubyGems、Crates、Conan、pub、Hex、Hackage、CRAN、LuaRocks、CocoaPods 与 apt
-- **匿名只读仓库**：按仓库开启匿名下载，未登录也能拉取依赖，上传与私有包接口仍要求鉴权
-- **响应地址改写**：npm `dist.tarball`、pub `archive_url`、crates `config.json.dl`、NuGet 服务索引 `@id` 自动改回本代理
-- **多上游故障转移**：每个仓库可配置主源和多个备用源，按顺序自动切换
-- **缓存治理**：按仓库统计命中与占用，支持容量配额、LRU 淘汰、按天数清理和每日自动清理
-- **私有包托管**：上传企业内部包，提供直接下载地址和 PEP 503 简单索引
-- **用户与权限**：多用户登录、用户组与仓库的读写授权矩阵、成员批量导入
-- **MFA 二次认证**：标准 TOTP，兼容任意认证器，支持强制策略、用户自助开关和管理员重置
-- **API 密钥**：为自动化流程和命令行单独签发、随时吊销
-- **完整性校验**：PyPI 比对索引哈希，npm 比对 integrity，拒绝写入被篡改的产物
-- **国密安全**：密码使用 PBKDF2-SM3，敏感数据使用 SM4 认证保护，兼容旧版数据迁移
-- **审计日志**：登录、仓库变更、上传删除、校验失败等事件全部落盘并安全存储
+### 代理与缓存
+
+- **路径级透明代理**：`/proxy/<仓库>/<原始路径>` 按仓库透传到上游，保留子路径与查询串，客户端无需理解缓存层
+- **内容寻址缓存**：缓存文件按 `SHA-256(repo:path)` 分片落盘，临时文件写完后原子重命名，命中时直接从磁盘流式返回
+- **条件请求与分段传输**：保留上游 `ETag`，支持 `If-None-Match`/304 复用、`Range` 206 与 416 响应；冷缓存 Range 会先取完整文件并校验，再返回分段
+- **上游故障转移与降级**：主源、备用源按序尝试，上游 5xx 或超时后回退旧缓存；`X-Cache-Status` 暴露 `fresh`/`hit`/`revalidated`/`stale` 状态
+
+### 生态与协议
+
+- **15 种生态**：PyPI、npm、Go Modules、Maven/Gradle、NuGet、RubyGems、Crates、Conan、Dart pub、Hex、Hackage、CRAN、LuaRocks、CocoaPods 与 apt/apk/dnf/pacman 文件型源
+- **元数据地址改写**：PyPI simple 索引的 `files.pythonhosted.org`、npm `dist.tarball`、pub `archive_url`、crates `config.json.dl` 与 NuGet v3 `@id` 统一改写回代理；crates 包路径映射到 `static.crates.io`
+- **跨主机重定向与 SNI**：服务端手动跟随最多 5 次 302，每个跳转目标按自身主机重建 TLS 客户端并设置 SNI，覆盖 NuGet/CDN 等跨域场景
+- **私有包托管**：支持上传、直接下载与 PEP 503 简单索引，私有包接口独立鉴权
+
+### 权限与安全
+
+- **多凭证认证**：HTTP Basic（用户名任意、密码填 API 密钥）、`Authorization: Bearer`、`Session-Token`、`X-Auth-Token` 与 `?token=` 单次请求参数
+- **组级 ACL 与匿名只读**：用户组到仓库的 `can_download`/`can_upload` 权限矩阵；仓库可按需开启匿名读取，上传与私有包接口仍需鉴权；管理员访问代理同样受组权限约束
+- **会话与 API 密钥**：会话令牌只保存 SM3 哈希并支持滑动过期；API 密钥仅保存前缀与哈希，可随时单独吊销
+- **TOTP 二次认证**：标准 TOTP，兼容任意认证器，支持普通用户自助开关、管理员强制策略与重置
+- **完整性校验**：PyPI 比对索引哈希，npm 比对 `dist.integrity`，校验失败拒绝落盘并记录审计，防止缓存被篡改的产物
+- **国密安全**：密码使用 PBKDF2-SM3，敏感数据采用 SM4-CBC 加密并以 HMAC-SM3 做完整性保护，兼容旧版数据迁移
+- **加密审计日志**：登录、仓库变更、上传删除、权限调整与校验失败事件加密落盘
+
+### 运维与可观测
+
+- **缓存治理**：仓库级容量配额，超限按 `last_hit_at`/`hits` 做 LRU 淘汰；支持保留天数清理与每日自动清理
+- **统计与接口文档**：按仓库统计命中率、文件数与占用空间，内置 `/docs`、`/redoc` 与 `/openapi.json`
+- **单可执行文件与 SQLite WAL**：无外部服务依赖，元数据与缓存分离，数据库开启 WAL 与 30 秒忙等待
+- **内置接入文档与 AI 技能**：Web 文档覆盖 15 类客户端配置，`/skill/modernmirror-config/SKILL.md` 可供 AI 工具直接读取并执行配置或回滚
 
 ## 界面预览
 
