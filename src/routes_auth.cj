@@ -240,6 +240,9 @@ func authMfaDisable(ctx: HttpContext, ip: String): Unit {
     if (!a.hasUser()) {
         throw HttpError(400, "CLI token 无用户")
     }
+    if (a.userValue("mfa_secret") == "") {
+        throw HttpError(400, "MFA 未开启")
+    }
     let body = readJsonBody(ctx.request)
     let password = jsonGetString(body, "password")
     let code = jsonGetString(body, "code")

@@ -5,14 +5,16 @@ import {
 import { PlusOutlined } from '@ant-design/icons'
 import { api } from '../api'
 
-export default function SettingsPage({ user }) {
+export default function SettingsPage({ user, isAdmin }) {
   const [enforced, setEnforced] = useState(false)
   const [mine, setMine] = useState(null)
 
   useEffect(() => {
-    api('/admin/settings').then((s) => setEnforced(!!s.mfa_enforced)).catch(() => {})
+    if (isAdmin) {
+      api('/admin/settings').then((s) => setEnforced(!!s.mfa_enforced)).catch(() => {})
+    }
     api('/auth/me').then(setMine).catch(() => {})
-  }, [])
+  }, [isAdmin])
 
   const setEnforce = async (v) => {
     try {
@@ -28,13 +30,20 @@ export default function SettingsPage({ user }) {
   return (
     <>
       <h2>系统设置</h2>
-      <Card title="登录与 MFA 策略" style={{ marginBottom: 16 }}>
-        <p style={{ marginBottom: 6 }}><b>强制 MFA</b></p>
-        <Checkbox checked={enforced} onChange={(e) => setEnforce(e.target.checked)}>
-          开启后, 时效内未绑定 MFA 的普通用户将被拦在管理端之外
-          (已绑定用户不受影响; 管理员自身保留应急通道; 下载类请求不受此限制)
-        </Checkbox>
-      </Card>
+      {isAdmin ? (
+        <Card title="登录与 MFA 策略" style={{ marginBottom: 16 }}>
+          <p style={{ marginBottom: 6 }}><b>强制 MFA</b></p>
+          <Checkbox checked={enforced} onChange={(e) => setEnforce(e.target.checked)}>
+            开启后, 时效内未绑定 MFA 的普通用户将被拦在管理端之外
+            (已绑定用户不受影响; 管理员自身保留应急通道; 下载类请求不受此限制)
+          </Checkbox>
+        </Card>
+      ) : (
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          这里可以管理你自己的 MFA 二次认证与 API 密钥。忘记动态码时联系管理员重置 MFA,
+          重置后可直接用账号密码登录, 再回到这里重新绑定。
+        </Typography.Paragraph>
+      )}
       <MfaMyCard user={mine || {}} />
       <ApiTokenCard user={mine || {}} />
     </>
@@ -163,7 +172,10 @@ function ApiTokenCard({ user }) {
 
 export function MfaMyCard({ user }) {
   const [state, setState] = useState({ secret: '', otpauth: '' })
-  const codeInput = React.useRef()
+  const [disableOpen, setDisableOpen] = useState(false)
+  const [disableForm, setDisableForm] = useState({ password: '', code: '' })
+  const [busy, setBusy] = useState(false)
+  const codeRef = React.useRef()
   const [qrData, setQrData] = useState('')
 
   useEffect(() => {
@@ -195,12 +207,53 @@ export function MfaMyCard({ user }) {
     } catch (err) { message.error(err.message) }
   }
 
+  const disable = async () => {
+    setBusy(true)
+    try {
+      await api('/auth/mfa/disable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: disableForm.password, code: disableForm.code })
+      })
+      message.success('MFA 已关闭, 下次登录只需要账号密码')
+      window.location.reload()
+    } catch (err) {
+      message.error(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (user?.mfa) {
     return (
-      <Card title="我的 MFA">
+      <Card title="我的 MFA" style={{ marginBottom: 16 }}>
         🎉 你已开启 MFA。<Typography.Text type="secondary">
-        (管理员如需关闭, 请联系管理员重置你的 MFA)
-      </Typography.Text>
+        (手机丢失或动态码不可用时, 可联系管理员在用户管理里重置你的 MFA; 重置后可直接用账号密码登录)
+        </Typography.Text>
+        <div style={{ marginTop: 12 }}>
+          <Button danger onClick={() => setDisableOpen(true)}>关闭 MFA</Button>
+        </div>
+        <Modal
+          open={disableOpen}
+          title="关闭 MFA"
+          onCancel={() => setDisableOpen(false)}
+          onOk={disable}
+          okText="确认关闭"
+          okButtonProps={{ danger: true, loading: busy }}
+        >
+          <p style={{ marginBottom: 12 }}>关闭后登录只需要账号密码。为确认是本人操作, 请重新输入密码和当前动态码。</p>
+          <Input.Password
+            placeholder="当前密码"
+            style={{ marginBottom: 8 }}
+            value={disableForm.password}
+            onChange={(e) => setDisableForm({ ...disableForm, password: e.target.value })}
+          />
+          <Input
+            placeholder="6 位动态码"
+            maxLength={6}
+            value={disableForm.code}
+            onChange={(e) => setDisableForm({ ...disableForm, code: e.target.value })}
+          />
+        </Modal>
       </Card>
     )
   }
@@ -243,10 +296,10 @@ export function MfaMyCard({ user }) {
         style={{ maxWidth: 240, marginRight: 8, marginBottom: 8 }}
         placeholder="输入 6 位动态码"
         maxLength={6}
-        ref={(el) => { window._mfaCodeInput = el }}
+        ref={codeRef}
       />
       <Button type="primary" onClick={() => {
-        const v = window._mfaCodeInput?.input?.value
+        const v = codeRef.current?.input?.value
         if (v && v.length === 6) enable(v)
         else message.error('请先输入 6 位动态码')
       }}>

@@ -216,9 +216,38 @@ check("mfa disable", st == 200, st)
 st, d = login("alice", "alicepass3")
 check("login without mfa after disable", st == 200 and d.get("mfa_required") is False, d)
 
+# ---- 内置技能与普通用户可见仓库 ----
+st, _, body = call("GET", "/skill/modernmirror-config/SKILL.md", None, alice_token, raw=True)
+check("skill file for user", st == 200 and b"modernmirror-config" in body, st)
+st, _, _ = call("GET", "/skill/modernmirror-config/SKILL.md", None, None)
+check("skill requires login", st == 401, st)
+
+st, _, _ = call("POST", "/admin/repos", {"name": "anonapi", "type": "npm",
+    "upstream": "https://registry.npmjs.org", "anonymous": True}, TOKEN)
+st, _, _ = call("POST", "/admin/repos", {"name": "hiddenapi", "type": "npm",
+    "upstream": "https://registry.npmjs.org", "anonymous": False}, TOKEN)
+st, _, repos = call("GET", "/admin/repos", None, alice_token)
+visible = {r["name"] for r in repos}
+check("user sees anonymous repository", "anonapi" in visible, sorted(visible))
+check("user cannot see unshared private repository", "hiddenapi" not in visible, sorted(visible))
+call("DELETE", "/admin/repos/anonapi", None, TOKEN)
+call("DELETE", "/admin/repos/hiddenapi", None, TOKEN)
+
 # ---- admin reset mfa ----
-st, _, _ = call("POST", "/admin/users/alice/reset-mfa", None, TOKEN)
-check("admin reset mfa", st == 200, st)
+st, _, _ = call("POST", "/auth/mfa/disable", {"password": "alicepass3", "code": "000000"}, alice_token)
+check("mfa disable when not enabled rejected", st == 400, st)
+
+# 重新绑定后再由管理员重置, 验证重置真正生效而不只是接口返回 200
+st, _, d = call("POST", "/auth/mfa/setup", None, alice_token)
+check("mfa setup before reset", st == 200 and bool(d.get("secret")), d)
+st, _, _ = call("POST", "/auth/mfa/enable", {"code": totp(d["secret"])}, alice_token)
+check("mfa enable before reset", st == 200, st)
+st, _, r = call("POST", "/admin/users/alice/reset-mfa", None, TOKEN)
+check("admin reset mfa", st == 200 and r.get("ok") is True, r)
+st, d = login("alice", "alicepass3")
+check("login without mfa after admin reset", st == 200 and d.get("mfa_required") is False, d)
+st, _, r = call("POST", "/admin/users/nobody/reset-mfa", None, TOKEN)
+check("admin reset mfa unknown user", st == 200 and r.get("ok") is False, r)
 
 # ---- settings ----
 st, _, s = call("PUT", "/admin/settings?mfa_enforced=1", None, TOKEN)

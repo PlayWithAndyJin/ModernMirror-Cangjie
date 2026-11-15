@@ -54,8 +54,12 @@ export default function Users() {
 
   const resetMfa = async (username) => {
     try {
-      await api(`/admin/users/${username}/reset-mfa`, { method: 'POST' })
-      message.success('已重置该用户的 MFA')
+      const r = await api(`/admin/users/${username}/reset-mfa`, { method: 'POST' })
+      if (r && r.ok === false) {
+        message.warning(`${username} 不存在或已被删除`)
+      } else {
+        message.success(`${username} 的 MFA 已关闭, 该用户现在可以直接用账号密码登录`)
+      }
       load()
     } catch (err) {
       message.error(err.message)
@@ -98,9 +102,23 @@ export default function Users() {
           >
             重置密码
           </Button>
-          <Button size="small" style={{ marginLeft: 8 }} onClick={() => resetMfa(r.username)}>
-            重置MFA
-          </Button>
+          <Popconfirm
+            title={`重置 ${r.username} 的 MFA?`}
+            description="重置后该用户的 MFA 立即失效, 可以只用账号密码登录; 需要时可自行重新绑定。"
+            okText="确认重置"
+            okButtonProps={{ danger: true }}
+            disabled={!r.mfa}
+            onConfirm={() => resetMfa(r.username)}
+          >
+            <Button
+              size="small"
+              style={{ marginLeft: 8 }}
+              disabled={!r.mfa}
+              title={r.mfa ? '' : '该用户未开启 MFA'}
+            >
+              重置MFA
+            </Button>
+          </Popconfirm>
           <Popconfirm
             title={`删除用户 ${r.username}?`}
             disabled={r.username === 'admin'}

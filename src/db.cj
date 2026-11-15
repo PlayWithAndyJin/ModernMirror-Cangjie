@@ -23,6 +23,7 @@ func dbInit(): Unit {
             type TEXT NOT NULL,
             upstream TEXT NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1,
+            anonymous INTEGER NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now', 'localtime'))
         )
         """)
@@ -139,6 +140,7 @@ func dbInit(): Unit {
     dbRunAlter("ALTER TABLE api_tokens ADD COLUMN token_algo TEXT NOT NULL DEFAULT 'sha256'")
     dbRunAlter("ALTER TABLE repos ADD COLUMN upstreams TEXT NOT NULL DEFAULT '[]'")
     dbRunAlter("ALTER TABLE repos ADD COLUMN quota_mb INTEGER NOT NULL DEFAULT 0")
+    dbRunAlter("ALTER TABLE repos ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0")
 }
 
 func dbRunAlter(sql: String): Unit {

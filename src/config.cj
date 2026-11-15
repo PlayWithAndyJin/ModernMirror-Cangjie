@@ -4,7 +4,7 @@ import std.collection.*
 import std.fs.*
 
 let APP_NAME = "ModernMirror"
-let APP_VERSION = "1.1.23"
+let APP_VERSION = "1.1.25"
 let DATA_DIR = envOr("MODERNMIRROR_DATA", "data")
 let DB_PATH = joinPath(DATA_DIR, "modernmirror.db")
 let CACHE_DIR = joinPath(DATA_DIR, "cache")

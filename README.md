@@ -11,6 +11,14 @@
 
 > ModernMirror 与 Nexus、Verdaccio 等项目没有关联，是一个独立实现。
 
+## 版本 1.1.25 更新
+
+- 「系统设置」对所有角色开放：普通用户可自助绑定或关闭 MFA、生成与吊销自己的 API 密钥
+- 仓库新增「允许匿名下载」开关，解决 Go、CocoaPods 等客户端在纯 HTTP 下无法携带凭据的问题
+- 补齐 15 种生态的客户端配置，并为普通用户开放「配置」按钮，可复制自己有下载权限的仓库命令
+- 服务端改写 npm、pub、crates、NuGet 元数据中的绝对下载地址，包文件重新经过代理并进入缓存
+- 内置 AI 配置技能 `skills/SKILL.md`，登录后可访问 `/skill/modernmirror-config/SKILL.md`
+
 ## 设计目标
 
 - **单文件部署**：编译产物是单个可执行文件，无需额外语言运行时与虚拟环境
@@ -21,12 +29,14 @@
 ## 特性
 
 - **透明代理缓存**：首次请求回源并落盘，后续命中直接读本地磁盘；支持 ETag 条件请求与 `X-Cache-Status` 观测
-- **多生态开箱即用**：PyPI、npm、Go Modules、Maven、NuGet、RubyGems、apt 等文件型源
+- **多生态开箱即用**：PyPI、npm、Go Modules、Maven/Gradle、NuGet、RubyGems、Crates、Conan、pub、Hex、Hackage、CRAN、LuaRocks、CocoaPods 与 apt
+- **匿名只读仓库**：按仓库开启匿名下载，未登录也能拉取依赖，上传与私有包接口仍要求鉴权
+- **响应地址改写**：npm `dist.tarball`、pub `archive_url`、crates `config.json.dl`、NuGet 服务索引 `@id` 自动改回本代理
 - **多上游故障转移**：每个仓库可配置主源和多个备用源，按顺序自动切换
 - **缓存治理**：按仓库统计命中与占用，支持容量配额、LRU 淘汰、按天数清理和每日自动清理
 - **私有包托管**：上传企业内部包，提供直接下载地址和 PEP 503 简单索引
 - **用户与权限**：多用户登录、用户组与仓库的读写授权矩阵、成员批量导入
-- **MFA 二次认证**：标准 TOTP，兼容任意认证器，支持强制策略和管理员重置
+- **MFA 二次认证**：标准 TOTP，兼容任意认证器，支持强制策略、用户自助开关和管理员重置
 - **API 密钥**：为自动化流程和命令行单独签发、随时吊销
 - **完整性校验**：PyPI 比对索引哈希，npm 比对 integrity，拒绝写入被篡改的产物
 - **国密安全**：密码使用 PBKDF2-SM3，敏感数据使用 SM4 认证保护，兼容旧版数据迁移
@@ -108,7 +118,7 @@ Linux 与 macOS 可以直接部署，Windows 原生构建暂未支持，推荐�
 | 系统 | 架构 | 支持状态 |
 |---|---|---|
 | Linux | x86_64 | 支持 |
-| Linux | aarch64 | 配置已包含，未实测 |
+| Linux | aarch64 | 支持，已在飞牛 fnOS 实测 |
 | macOS | arm64 | 支持，已实测 |
 | macOS | x86_64 | 配置已包含，未实测 |
 | Windows | x86_64 | 暂不支持原生构建，使用 WSL2 |
@@ -251,52 +261,73 @@ MODERNMIRROR_DATA=/path/to/old-data ./scripts/run.sh
 http://<主机>:8800/proxy/<仓库名>/<原始路径>
 ```
 
-鉴权方式按优先级：
+鉴权方式（客户端按自身能力选择）：
 
 1. 请求头 `Session-Token: <API 密钥>`
 2. 请求头 `Authorization: Bearer <API 密钥>`
 3. HTTP Basic，用户名任意，密码填 API 密钥
 4. URL 查询参数 `?token=<API 密钥>`
 
+`?token=` 适合 `curl` 等单次请求；多数包管理器会把 token 拼进子路径，或在索引内包文件的子请求中丢掉查询串，因此客户端配置请优先使用 Basic 或各自的令牌配置项。
+
+### 匿名只读仓库
+
+仓库编辑页可开启「允许匿名下载」。开启后该仓库的代理读取不再需要登录，上传与私有包接口仍然需要鉴权。Go、CocoaPods 这类在纯 HTTP 部署下无法携带凭据的客户端建议开启。
+
+普通用户登录后同样可以打开「镜像仓库」页，看到自己有下载权限或允许匿名下载的仓库，并用「配置」按钮复制客户端命令；仓库的增删改与启停仍仅管理员可见。
+
 ### 各生态示例
 
-**Python / pip**
+**Python / pip**（Basic 认证，密码位置填密钥）
 
 ```bash
 pip config set global.index-url "http://mm:<API_KEY>@HOST:8800/proxy/pypi/simple/"
+pip config set global.trusted-host HOST          # 仅 HTTP 部署需要
 pip install requests
 ```
 
-**Node.js / npm**
+**Node.js / npm**（令牌写进 `.npmrc`，不能放在 registry 的 query 里）
 
 ```bash
 npm config set registry "http://HOST:8800/proxy/npm/"
-npm config set //HOST:8800/:_authToken "<API_KEY>"
+npm config set //HOST:8800/proxy/npm/:_authToken "<API_KEY>"
 npm install antd
 ```
 
-**Go Modules**
+**Go Modules**（匿名仓库，或为服务配置 HTTPS 反向代理）
 
 ```bash
-export GOPROXY="http://HOST:8800/proxy/go/"
+export GOPROXY="http://HOST:8800/proxy/go"
+export GOSUMDB=off
 go get example.com/module@latest
 ```
 
-**Maven / Gradle**
+**Maven / Gradle**（凭据放在同 id 的 `<server>` 中）
 
 ```xml
 <mirror>
   <id>modernmirror</id>
-  <mirrorOf>central</mirrorOf>
+  <mirrorOf>*</mirrorOf>
   <url>http://HOST:8800/proxy/maven/</url>
 </mirror>
+<server>
+  <id>modernmirror</id>
+  <username>modernmirror</username>
+  <password>&lt;API_KEY&gt;</password>
+</server>
 ```
 
-**apt**
+**apt**（开启匿名下载后可直接使用）
 
 ```bash
-deb http://mm:<API_KEY>@HOST:8800/proxy/debian bookworm main
+deb http://HOST:8800/proxy/debian bookworm main
 ```
+
+NuGet、RubyGems、Crates、Conan、pub、Hex、Hackage、CRAN、LuaRocks、CocoaPods 等其余生态的配置见内置文档页；「镜像仓库」页每一行的「客户端配置」按钮会按仓库类型生成可直接复制的命令。
+
+### 响应改写
+
+服务端会把 npm 的 `dist.tarball`、pub 的 `archive_url`、crates 的 `config.json.dl` 和 NuGet v3 服务索引的 `@id` 改写为当前代理地址，包文件因此也会经过代理并进入缓存。crates 需要把上游设为 `https://index.crates.io`，`config.json` 会按仓库是否允许匿名写入 `auth-required`；NuGet 上游设为 `https://api.nuget.org` 即可，跨域 302 会在服务端跟随。
 
 更完整的客户端配置见内置文档页，或使用 `skills/SKILL.md` 让 AI 工具自动完成配置与回滚。
 
@@ -375,7 +406,7 @@ SKIP_FRONTEND=1 ./scripts/setup.sh
 
 编译产物位于 `target/release/bin/main`。直接运行需要仓颉运行时库，`scripts/run.sh` 会自动补齐路径。
 
-运行自检，覆盖健康检查、登录、仓库列表和接口文档：
+运行自检，覆盖健康检查、登录、仓库列表、接口文档与内置 AI 技能：
 
 ```bash
 ./scripts/smoke.sh
@@ -383,12 +414,16 @@ SKIP_FRONTEND=1 ./scripts/setup.sh
 
 ### 端到端测试
 
-端到端测试需要一个全新的数据目录和一个可访问公网的 npm 源：
+两个测试脚本都会创建并删除用户、仓库等数据，请分别使用全新的数据目录启动服务。`proxy_test.py` 还需要能够访问公网的 npm 与 crates 源：
 
 ```bash
-rm -rf /tmp/mmtest && MODERNMIRROR_DATA=/tmp/mmtest MODERNMIRROR_PORT=8899 ./scripts/run.sh &
+# 接口、权限、MFA 与内置技能
+rm -rf /tmp/mm-api && MODERNMIRROR_DATA=/tmp/mm-api MODERNMIRROR_PORT=8899 ./scripts/run.sh &
 MM_BASE=http://127.0.0.1:8899 python3 tests/api_test.py
-MM_BASE=http://127.0.0.1:8899 python3 tests/proxy_test.py
+
+# 代理缓存、匿名仓库、响应改写与配额
+rm -rf /tmp/mm-proxy && MODERNMIRROR_DATA=/tmp/mm-proxy MODERNMIRROR_PORT=8898 ./scripts/run.sh &
+MM_BASE=http://127.0.0.1:8898 python3 tests/proxy_test.py
 ```
 
 `MM_BASE` 是测试脚本访问的服务地址，需要与启动时设置的监听地址和端口一致，未设置时默认使用 `http://127.0.0.1:8899`。

@@ -128,6 +128,14 @@ func requireAdmin(ctx: HttpContext, ip: String): AuthCtx {
     return a
 }
 
+// 允许匿名读取的仓库跳过登录校验, 但仍要求仓库存在且已启用。
+func requireProxyAccess(ctx: HttpContext, ip: String, repoName: String, repo: DbRow): Unit {
+    if (vInt(repo, "anonymous") == 1) {
+        return
+    }
+    requireRepoPermission(ctx, ip, repoName, "can_download")
+}
+
 func requireRepoPermission(ctx: HttpContext, ip: String, repo: String, perm: String): AuthCtx {
     let a = requireSession(ctx, ip)
     if (!canAccess(a, repo, perm)) {

@@ -93,21 +93,48 @@ export default function Docs() {
 
       <Block id="sec-quickstart" title="二、接入流程">
         <ol style={{ paddingLeft: 20 }}>
-          <Li>使用管理员账号登录管理界面。</Li>
-          <Li>进入系统设置中的 API 密钥管理, 生成一个用于客户端访问的密钥。</Li>
-          <Li>在用户组权限页面创建用户组, 为其分配各仓库的下载与上传权限, 并将需要使用代理的用户加入该组。请注意: 管理员账号同样需要手动加入用户组并配置该组的仓库使用权限, 否则其代理请求同样会因未被授权而被拒绝。</Li>
-          <Li>按下一节介绍的通用代理地址格式配置客户端。</Li>
+          <Li>普通用户使用自己的账号登录即可; 首次部署或需要调整仓库与授权时, 由管理员完成下列配置。</Li>
+          <Li>在「系统设置 - API 密钥管理」中生成一个用于客户端访问的密钥(普通用户只能管理自己的密钥)。</Li>
+          <Li>管理员在「用户组权限」页面创建用户组, 为其分配各仓库的下载与上传权限, 并将需要使用代理的用户加入该组。请注意: 管理员账号同样需要手动加入用户组并配置该组的仓库使用权限, 否则其代理请求同样会因未被授权而被拒绝。</Li>
+          <Li>打开「镜像仓库」页面, 找到自己可用的仓库, 点击「配置」按钮复制对应客户端的接入命令; 允许匿名下载的仓库无需填写密钥。</Li>
           <Li>向仓库发起请求以验证链路, 并在缓存统计页面确认命中情况。</Li>
         </ol>
       </Block>
 
       <Block id="sec-url" title="三、通用代理地址">
         <Paragraph>
-          所有仓库均遵循同一路径透传规则, 通用代理地址格式如下, 使用时替换其中的主机地址、仓库名称与密钥即可:
+          所有仓库均遵循同一路径透传规则: 代理地址为 <Text code>{`${window.location.origin}/proxy/<仓库名>/`}</Text>,
+          其后的子路径与查询串会原样转发到上游。例如 pypi 仓库的简单索引是
+          <Text code>/proxy/pypi/simple/</Text>, npm 仓库的包元数据是 <Text code>/proxy/npm/lodash</Text>。
         </Paragraph>
-        <Code>{`${window.location.origin}/proxy/<仓库名>/?token=<API密钥>`}</Code>
-        <Paragraph style={{ marginTop: 12 }}>
-          于各语言客户端内的接入位置示例说明见镜像仓库页面中每一行「代理地址」列的说明(应用自带的列复制按钮可直接复制基础地址)。
+        <Paragraph>
+          鉴权支持四种方式, 任选其一: <b>Authorization: Basic</b>(用户名任意, 密码位置填密钥)、
+          <b>Session-Token</b>、<b>X-Auth-Token</b>、<b>Authorization: Bearer</b>。
+          早期文档里的 <Text code>?token=</Text> 仍可用于 curl 这类单次请求, 但多数包管理器会把 token 拼进子路径或丢掉查询串,
+          因此客户端配置应优先使用 Basic 或各自的令牌配置项。
+        </Paragraph>
+        <Paragraph>
+          仓库可开启<b>允许匿名下载</b>: 开启后该仓库的代理读取不再需要登录, 但上传与私有包接口仍然需要鉴权。
+          Go、CocoaPods 这类在纯 HTTP 下无法携带凭据的客户端建议开启。
+        </Paragraph>
+        <Paragraph><b>各类型客户端接入位置</b></Paragraph>
+        <ol style={{ paddingLeft: 20 }}>
+          <Li>pypi: <Text code>pip config set global.index-url</Text> 指向 <Text code>/proxy/仓库/simple/</Text>, 凭据写在 URL 的 Basic 位置。</Li>
+          <Li>npm: registry 指向 <Text code>/proxy/仓库/</Text>, 密钥写入 <Text code>.npmrc</Text> 的 <Text code>//主机/路径/:_authToken</Text>; registry 地址里不能带 query。</Li>
+          <Li>maven: <Text code>settings.xml</Text> 的 mirror 指向代理, 账密配在同 id 的 server 中。</Li>
+          <Li>nuget: <Text code>dotnet nuget add source</Text> 指向 <Text code>/proxy/仓库/v3/index.json</Text>, 上游应为 <Text code>https://api.nuget.org</Text>。</Li>
+          <Li>rubygems: <Text code>bundle config mirror.https://rubygems.org</Text> 指向代理, 或 <Text code>gem sources</Text> 直接替换。</Li>
+          <Li>crates: <Text code>~/.cargo/config.toml</Text> 用 sparse 源替换 crates-io, 上游应为 <Text code>https://index.crates.io</Text>。</Li>
+          <Li>go: <Text code>GOPROXY</Text> 指向代理并设 <Text code>GOSUMDB=off</Text>; 纯 HTTP 下必须开启匿名下载。</Li>
+          <Li>conan: <Text code>conan remote add</Text> 指向代理, 再用 <Text code>conan remote login</Text> 写入账号。</Li>
+          <Li>pub: <Text code>PUB_HOSTED_URL</Text> 指向代理, 令牌用 <Text code>dart pub token add</Text> 写入(按主机保存)。</Li>
+          <Li>hex: <Text code>mix hex.repo add</Text> 需要同时提供 hex.pm 公钥与 auth-key。</Li>
+          <Li>hackage、cran、luarocks、cocoapods 与通用文件(apt/apk/dnf/pacman)分别按各自配置项指向代理地址即可。</Li>
+        </ol>
+        <Paragraph type="secondary">
+          服务端会把 npm 的 <Text code>dist.tarball</Text>、pub 的 <Text code>archive_url</Text>、crates 的
+          <Text code>config.json</Text> 与 NuGet v3 服务索引里的绝对地址改写回本代理, 因此这些生态的包文件也会真正经过缓存;
+          其余生态本身返回的就是相对路径。镜像仓库页面每一行的「客户端配置」按钮会按类型生成可直接复制的命令。
         </Paragraph>
       </Block>
 
@@ -155,20 +182,21 @@ export default function Docs() {
       </Block>
 
       <Block id="sec-token" title="六、API 密钥">
-        <Paragraph>API 密钥用于客户端侧的长期代理访问, 页面入口为系统设置中的 API 密钥管理。</Paragraph>
+        <Paragraph>API 密钥用于客户端侧的长期代理访问, 每位用户都可以在系统设置的 API 密钥管理中自行生成, 各用户只能看到并管理自己的密钥。</Paragraph>
         <ol style={{ paddingLeft: 20 }}>
           <Li>生成: 指定一个便于识别的备注名生成密钥, 密钥明文仅在生成时展示一次, 请立即保存。</Li>
           <Li>存储: 数据库仅存放 SM3 哈希, 拖库亦无法还原密钥明文。</Li>
           <Li>作废: 疑似泄露时点击对应条目的作废按钮, 密钥即刻失效, 客户端换用新密钥即可。</Li>
-          <Li>使用: 密钥通过代理地址的 token 参数传递, 各客户端均可直接嵌入 URL 使用。</Li>
+          <Li>使用: 密钥可通过 Basic 认证(用户名任意, 密码位置填密钥)、Session-Token 或 X-Auth-Token 请求头传递; curl 等单次请求也可以直接用 ?token= 查询参数。包管理器会对索引内的包地址发起子请求, 查询参数通常无法保留, 请使用各自客户端章节给出的配置方式。</Li>
         </ol>
       </Block>
 
       <Block id="sec-mfa" title="七、MFA 二次认证">
         <ol style={{ paddingLeft: 20 }}>
-          <Li>绑定: 系统设置进入我的 MFA 卡片, 点击生成密钥并使用任何标准认证器扫描二维码添加, 输入当前动态码确认生效。</Li>
+          <Li>绑定: 任意角色登录后都可在系统设置进入我的 MFA 卡片, 点击生成密钥并使用任何标准认证器扫描二维码添加, 输入当前动态码确认生效。</Li>
           <Li>登录: 该账号此后的登录流程需要在密码验证之后输入动态码完成二段认证。</Li>
-          <Li>重置: 用户忘记动态码时, 管理员可在用户管理页面对其重置 MFA; 重置后用户需重新绑定。</Li>
+          <Li>关闭: 已绑定用户可在我的 MFA 卡片点击关闭 MFA, 需同时校验当前密码与动态码, 关闭后登录只使用账号密码。</Li>
+          <Li>重置: 用户无法通过动态码登录时, 管理员可在用户管理页面对其重置 MFA; 重置会立即强制关闭该用户的 MFA, 用户即可用账号密码登录, 之后可自行重新绑定。</Li>
           <Li>强制策略: 管理员可开启强制 MFA, 未绑定用户将被拦截在管理端之外; 下载类请求与 API 密钥不受此策略影响。</Li>
         </ol>
       </Block>
@@ -241,7 +269,7 @@ sha256sum demo.whl`}</Code>
 
       <div style={{ padding: '8px 4px 24px', textAlign: 'center' }}>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          ModernMirror 使用文档 v1.1.23
+          ModernMirror 使用文档 v1.1.25
         </Typography.Text>
       </div>
     </>

@@ -105,16 +105,17 @@ export default function App() {
     { key: 'repos', icon: <DatabaseOutlined />, label: '镜像仓库' },
     { key: 'packages', icon: <InboxOutlined />, label: '私有包' },
     { key: 'stats', icon: <SettingOutlined />, label: '缓存统计' },
-    { key: 'docs', icon: <FileTextOutlined />, label: '使用文档' }
+    { key: 'docs', icon: <FileTextOutlined />, label: '使用文档' },
+    { type: 'divider' },
+    // 系统设置对所有角色可见: 普通用户在这里自助管理 MFA 与 API 密钥
+    { key: 'settings', icon: <SettingOutlined />, label: '系统设置' }
   ]
   if (isAdmin) {
     items.push(
       { type: 'divider' },
       { key: 'users', icon: <UserOutlined />, label: '用户管理' },
       { key: 'groups', icon: <TeamOutlined />, label: '用户组权限' },
-      { key: 'audit', icon: <FileTextOutlined />, label: '审计日志' },
-      { type: 'divider' },
-      { key: 'settings', icon: <SettingOutlined />, label: '系统设置' }
+      { key: 'audit', icon: <FileTextOutlined />, label: '审计日志' }
     )
   }
   const userMenu = {
@@ -155,10 +156,10 @@ export default function App() {
           {page === 'packages' && <Packages />}
           {page === 'stats' && <Stats />}
           {page === 'docs' && <Docs />}
+          {page === 'settings' && <SettingsPage user={user} isAdmin={isAdmin} />}
           {isAdmin && page === 'users' && <Users />}
           {isAdmin && page === 'groups' && <Groups />}
           {isAdmin && page === 'audit' && <Audit />}
-          {isAdmin && page === 'settings' && <SettingsPage user={user} />}
         </Content>
       </Layout>
       <Modal

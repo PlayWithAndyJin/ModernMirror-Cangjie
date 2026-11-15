@@ -36,7 +36,7 @@ func handleAdminRoute(ctx: HttpContext, ip: String, path: String, method: String
     if (sub.startsWith("users/")) {
         let rest = sub[6..]
         if (rest.endsWith("/reset-mfa") && method == "POST") {
-            adminResetMfa(ctx, ip, rest[0..rest.size - 11])
+            adminResetMfa(ctx, ip, rest[0..rest.size - 10])
             return
         }
         if (method == "PUT") {
@@ -326,6 +326,8 @@ func adminDeleteUser(ctx: HttpContext, ip: String, username: String): Unit {
 func adminResetMfa(ctx: HttpContext, ip: String, username: String): Unit {
     requireAdmin(ctx, ip)
     let affected = db().execParams("UPDATE users SET mfa_secret=NULL WHERE username=?", [DbText(username)])
+    // 同时丢掉未确认的待生效密钥，避免用户重新绑定时被旧状态干扰
+    setSetting("pending_mfa:" + username, "")
     audit("user.mfa_reset", ip, auditDetail([("user", username)]))
     let obj = jObj()
     obj.put("ok", jBool(affected > 0))
@@ -546,17 +548,14 @@ func adminListRepos(ctx: HttpContext, ip: String): Unit {
             arr.add(rowToJson(row))
         }
     } else {
-        let allowed = db().query(
-            "SELECT DISTINCT gr.repo AS repo FROM group_repos gr " +
-            "JOIN user_groups ug ON ug.group_id = gr.group_id " +
-            "WHERE ug.username=? AND (gr.can_download=1 OR gr.can_upload=1)", [DbText(a.username())])
-        for (item in allowed) {
-            let row = db().queryOne("SELECT * FROM repos WHERE name=? ORDER BY name",
-                [DbText(vText(item, "repo"))])
-            match (row) {
-                case Some(r) => arr.add(rowToJson(r))
-                case None => ()
-            }
+        // 普通用户可见: 自己所在组获得下载授权的仓库 + 允许匿名下载的仓库。
+        let visible = db().query(
+            "SELECT * FROM repos WHERE enabled=1 AND (anonymous=1 OR name IN (" +
+            "SELECT gr.repo FROM group_repos gr JOIN user_groups ug ON ug.group_id = gr.group_id " +
+            "WHERE ug.username=? AND gr.can_download=1)) ORDER BY name",
+            [DbText(a.username())])
+        for (row in visible) {
+            arr.add(rowToJson(row))
         }
     }
     respondJsonArray(ctx, 200, arr)
@@ -578,10 +577,13 @@ func adminAddRepo(ctx: HttpContext, ip: String): Unit {
     let urls = normalizeUpstreams(body)
     let quotaMb = jsonGetInt(body, "quota_mb")
     let enabled = jsonGetBool(body, "enabled", def: true)
+    let anonymous = jsonGetBool(body, "anonymous", def: false)
     db().execParams(
-        "INSERT INTO repos (name, type, upstream, upstreams, quota_mb, enabled) VALUES (?,?,?,?,?,?)",
+        "INSERT INTO repos (name, type, upstream, upstreams, quota_mb, enabled, anonymous) " +
+        "VALUES (?,?,?,?,?,?,?)",
         [DbText(name), DbText(rtype), DbText(urls[0]), DbText(upstreamsJson(urls)),
-         DbInt(quotaMb), DbInt(if (enabled) { 1 } else { 0 })])
+         DbInt(quotaMb), DbInt(if (enabled) { 1 } else { 0 }),
+         DbInt(if (anonymous) { 1 } else { 0 })])
     audit("repo.add", ip, auditDetail([("name", name), ("upstream", upstream)]))
     respondOk(ctx)
 }
@@ -601,10 +603,13 @@ func adminUpdateRepo(ctx: HttpContext, ip: String, name: String): Unit {
     let urls = normalizeUpstreams(body)
     let quotaMb = jsonGetInt(body, "quota_mb")
     let enabled = jsonGetBool(body, "enabled", def: true)
+    let anonymous = jsonGetBool(body, "anonymous", def: false)
     let affected = db().execParams(
-        "UPDATE repos SET upstream=?, upstreams=?, quota_mb=?, enabled=?, type=? WHERE name=?",
+        "UPDATE repos SET upstream=?, upstreams=?, quota_mb=?, enabled=?, type=?, anonymous=? " +
+        "WHERE name=?",
         [DbText(urls[0]), DbText(upstreamsJson(urls)), DbInt(quotaMb),
-         DbInt(if (enabled) { 1 } else { 0 }), DbText(rtype), DbText(name)])
+         DbInt(if (enabled) { 1 } else { 0 }), DbText(rtype),
+         DbInt(if (anonymous) { 1 } else { 0 }), DbText(name)])
     if (affected == 0) {
         throw HttpError(404, "not found")
     }

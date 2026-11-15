@@ -93,6 +93,43 @@ check("proxy invalid range 416", st == 416, st)
 st, h, body = call("GET", TARBALL, None, TOKEN, headers={"If-None-Match": etag}, raw=True)
 check("proxy revalidate etag", st == 200 and hget(h, "x-cache-status") in ("hit", "revalidated"), (st, hget(h, "x-cache-status")))
 
+# --- 响应改写: npm 元数据里的 dist.tarball 必须指回本代理
+st, h, meta = call("GET", "/proxy/npm/lodash", None, TOKEN)
+tarball_url = meta.get("versions", {}).get("4.17.21", {}).get("dist", {}).get("tarball", "")
+check("npm metadata rewritten", st == 200 and tarball_url.startswith(BASE + "/proxy/npm/"), tarball_url)
+if tarball_url.startswith(BASE):
+    st, h, body = call("GET", tarball_url[len(BASE):], None, TOKEN, raw=True)
+    check("npm rewritten tarball served", st == 200 and len(body) > 100000, (st, len(body)))
+
+# --- 匿名只读仓库: 未登录也能下载, 私有仓库仍然要求登录
+st, _, _ = call("POST", "/admin/repos", {"name": "anonnpm", "type": "npm",
+    "upstream": "https://registry.npmjs.org", "anonymous": True}, TOKEN)
+check("create anonymous repo", st == 200, st)
+st, h, body = call("GET", "/proxy/anonnpm/lodash", None, None, raw=True)
+check("anonymous proxy no auth", st == 200 and len(body) > 1000, (st, body[:80]))
+st, _, _ = call("GET", "/proxy/npm/lodash", None, None, raw=True)
+check("private proxy needs auth", st == 401, st)
+
+# --- crates: config.json 的 dl 改写与 auth-required
+st, _, _ = call("POST", "/admin/repos", {"name": "cratestest", "type": "crates",
+    "upstream": "https://index.crates.io", "anonymous": False}, TOKEN)
+check("create crates repo", st == 200, st)
+call("POST", f"/admin/groups/{default_gid}/repos/cratestest", {"can_download": True}, TOKEN)
+st, _, cfg = call("GET", "/proxy/cratestest/config.json", None, TOKEN)
+check("crates config dl rewritten",
+      st == 200 and isinstance(cfg, dict) and cfg.get("dl") == BASE + "/proxy/cratestest/crates",
+      (st, cfg))
+check("crates config auth-required", isinstance(cfg, dict) and cfg.get("auth-required") is True, cfg)
+
+st, _, _ = call("POST", "/admin/repos", {"name": "cratesanon", "type": "crates",
+    "upstream": "https://index.crates.io", "anonymous": True}, TOKEN)
+check("create anonymous crates repo", st == 200, st)
+st, _, cfg = call("GET", "/proxy/cratesanon/config.json", None, None)
+check("anonymous crates auth-required false",
+      st == 200 and isinstance(cfg, dict) and cfg.get("auth-required") is False, (st, cfg))
+st, h, body = call("GET", "/proxy/cratesanon/crates/serde/1.0.0/download", None, None, raw=True)
+check("crates download mapped to static", st == 200 and len(body) > 1000, (st, len(body)))
+
 # stats should show cached entry
 st, _, stats = call("GET", "/admin/stats", None, TOKEN)
 check("stats has npm entry", any(r["repo"] == "npm" for r in stats["per_repo"]), stats["per_repo"])
@@ -125,7 +162,7 @@ st, _, stats = call("GET", "/admin/stats", None, TOKEN)
 check("cleanup leaves zero files", stats["total_files"] == 0, stats["total_files"])
 
 # delete repos
-for name in ["npmq", "broken"]:
+for name in ["npmq", "broken", "anonnpm", "cratestest", "cratesanon"]:
     st, _, _ = call("DELETE", f"/admin/repos/{name}", None, TOKEN)
     check("delete repo " + name, st == 200, st)
 

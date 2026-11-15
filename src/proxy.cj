@@ -11,17 +11,52 @@ import stdx.encoding.json.*
 import stdx.net.http.*
 import stdx.net.tls.*
 
-func buildProxyClient(): Client {
-    let tlsConfig = TlsClientConfig()
+func buildProxyClient(host: String): Client {
+    var tlsConfig = TlsClientConfig()
+    // 部分 CDN(Fastly 等)要求 TLS 握手里带 SNI, 否则返回 421。
+    // 标准库客户端不会按 URL 自动填 SNI, 这里按上游主机逐个配置并缓存。
+    tlsConfig.domain = Some(host)
     return ClientBuilder()
-        .autoRedirect(true)
+        .autoRedirect(false)
         .readTimeout(Duration.second * 60)
         .writeTimeout(Duration.second * 60)
         .tlsConfig(tlsConfig)
         .build()
 }
 
-let PROXY_CLIENT = buildProxyClient()
+let PROXY_CLIENTS = HashMap<String, Client>()
+let PROXY_CLIENT_LOCK = Mutex()
+
+func urlHostName(url: String): String {
+    match (url.indexOf("://")) {
+        case Some(s) =>
+            let rest = url[s + 3..]
+            var host = rest
+            match (rest.indexOf("/")) {
+                case Some(i) => host = rest[0..i]
+                case None => ()
+            }
+            match (host.lastIndexOf(":")) {
+                case Some(p) => host = host[0..p]
+                case None => ()
+            }
+            return host
+        case None => return ""
+    }
+}
+
+func proxyClientFor(url: String): Client {
+    let host = urlHostName(url)
+    synchronized(PROXY_CLIENT_LOCK) {
+        match (PROXY_CLIENTS.get(host)) {
+            case Some(c) => return c
+            case None => ()
+        }
+        let client = buildProxyClient(host)
+        PROXY_CLIENTS.add(host, client)
+        return client
+    }
+}
 
 let VERIFY_CACHE = HashMap<String, HashMap<String, (String, String)>>()
 let VERIFY_LOCK = Mutex()
@@ -82,28 +117,69 @@ func cacheGet(key: String): HashMap<String, (String, String)> {
     }
 }
 
+func resolveRedirect(base: String, location: String): String {
+    if (location.startsWith("http://") || location.startsWith("https://")) {
+        return location
+    }
+    match (base.indexOf("://")) {
+        case Some(s) =>
+            let rest = base[s + 3..]
+            let hostEnd = match (rest.indexOf("/")) {
+                case Some(i) => s + 3 + i
+                case None => base.size
+            }
+            let origin = base[0..hostEnd]
+            if (location.startsWith("/")) {
+                return origin + location
+            }
+            let dir = match (base.lastIndexOf("/")) {
+                case Some(i) => base[0..i]
+                case None => base
+            }
+            return dir + "/" + location
+        case None => return location
+    }
+}
+
+// 手动跟随 302/307 等跳转: 每个跳转目标都按它自己的主机重新建立 TLS 连接并带正确 SNI。
+// 这样 api.nuget.org -> nuget.azure.cn -> globalcdn.nuget.org 这类跨域跳转才能正常工作。
 func upstreamGet(url: String, ifNoneMatch!: String = "", ifModifiedSince!: String = "",
                  range!: String = "", userAgent!: String = "", head!: Bool = false): HttpResponse {
-    var builder = HttpRequestBuilder()
-    if (head) {
-        builder.head()
-    } else {
-        builder.get()
+    var current = url
+    var hop = 0
+    while (hop <= 5) {
+        var builder = HttpRequestBuilder()
+        if (head) {
+            builder.head()
+        } else {
+            builder.get()
+        }
+        builder.url(current)
+        if (!ifNoneMatch.isEmpty()) {
+            builder.header("If-None-Match", ifNoneMatch)
+        }
+        if (!ifModifiedSince.isEmpty()) {
+            builder.header("If-Modified-Since", ifModifiedSince)
+        }
+        if (!range.isEmpty()) {
+            builder.header("Range", range)
+        }
+        if (!userAgent.isEmpty()) {
+            builder.header("User-Agent", userAgent)
+        }
+        let resp = proxyClientFor(current).send(builder.build())
+        if (resp.status >= 300 && resp.status < 400 && resp.status != 304) {
+            let location = respHeader(resp, "location")
+            if (location.isEmpty()) {
+                return resp
+            }
+            current = resolveRedirect(current, location)
+            hop = hop + 1
+            continue
+        }
+        return resp
     }
-    builder.url(url)
-    if (!ifNoneMatch.isEmpty()) {
-        builder.header("If-None-Match", ifNoneMatch)
-    }
-    if (!ifModifiedSince.isEmpty()) {
-        builder.header("If-Modified-Since", ifModifiedSince)
-    }
-    if (!range.isEmpty()) {
-        builder.header("Range", range)
-    }
-    if (!userAgent.isEmpty()) {
-        builder.header("User-Agent", userAgent)
-    }
-    return PROXY_CLIENT.send(builder.build())
+    throw HttpError(502, "too many upstream redirects")
 }
 
 func expectedPypiHash(repo: DbRow, fname: String): ?(String, String) {
@@ -320,6 +396,110 @@ func getRepo(repoName: String): DbRow {
     }
 }
 
+// 取上游基地址; crates 的 sparse 索引与 .crate 文件分属不同主机,
+// 索引侧把 dl 指向本代理的 /crates/ 路径, 这里再映射回 static.crates.io。
+func proxyUpstreamBases(repoRow: DbRow, subPath: String): ArrayList<String> {
+    if (vText(repoRow, "type") == "crates" && subPath.startsWith("crates/")) {
+        let out = ArrayList<String>()
+        out.add("https://static.crates.io")
+        return out
+    }
+    return upstreamUrls(repoRow)
+}
+
+func proxyBaseUrl(ctx: HttpContext, repoName: String): String {
+    let host = headerOrEmpty(ctx.request, "host")
+    var proto = headerOrEmpty(ctx.request, "x-forwarded-proto").trimAscii()
+    if (proto.isEmpty()) {
+        proto = "http"
+    }
+    return proto + "://" + host + "/proxy/" + repoName
+}
+
+func upstreamOrigins(urls: ArrayList<String>): ArrayList<String> {
+    let out = ArrayList<String>()
+    for (u in urls) {
+        match (u.indexOf("://")) {
+            case Some(s) =>
+                let rest = u[s + 3..]
+                let origin = match (rest.indexOf("/")) {
+                    case Some(j) => u[0..s + 3 + j]
+                    case None => u
+                }
+                if (!origin.isEmpty()) {
+                    out.add(origin)
+                }
+            case None => ()
+        }
+    }
+    return out
+}
+
+func rewriteCratesConfig(raw: String, base: String, needAuth: Bool): String {
+    match (jsonParseObject(raw)) {
+        case Some(obj) =>
+            obj.put("dl", jStr(base + "/crates"))
+            obj.put("auth-required", jBool(needAuth))
+            return compactJson(obj)
+        case None => return raw
+    }
+}
+
+func needsProxyRewrite(repoRow: DbRow, path: String, contentType: String): Bool {
+    let rtype = vText(repoRow, "type")
+    if (rtype != "npm" && rtype != "pub" && rtype != "nuget" && rtype != "crates") {
+        return false
+    }
+    if (rtype == "crates") {
+        return path == "config.json"
+    }
+    return contentType.toAsciiLower().contains("json")
+}
+
+// 把上游元数据里的绝对地址改写回本代理, 让客户端后续的包文件请求仍然经过缓存。
+func rewriteProxyFile(ctx: HttpContext, repoRow: DbRow, repoName: String, path: String,
+                      contentType: String, filePath: String, size: Int64): Int64 {
+    if (!needsProxyRewrite(repoRow, path, contentType)) {
+        return size
+    }
+    if (size <= 0 || size > 64 * 1024 * 1024) {
+        return size
+    }
+    try {
+        let raw = readAllBytes(filePath)
+        let text = String.fromUtf8(raw)
+        let base = proxyBaseUrl(ctx, repoName)
+        let rtype = vText(repoRow, "type")
+        var out = text
+        if (rtype == "crates") {
+            out = rewriteCratesConfig(text, base, vInt(repoRow, "anonymous") != 1)
+        } else {
+            for (origin in upstreamOrigins(upstreamUrls(repoRow))) {
+                out = out.replace(origin, base)
+            }
+            if (rtype == "npm") {
+                out = out.replace("https://registry.npmjs.org", base)
+            } else if (rtype == "nuget") {
+                out = out.replace("https://api.nuget.org", base)
+                out = out.replace("https://nuget.azure.cn", base)
+            } else if (rtype == "pub") {
+                out = out.replace("https://pub.dev", base)
+            }
+        }
+        if (out == text) {
+            return size
+        }
+        // 临时文件已经存在, writeAllBytes 用 File.create 会失败, 因此先写旁路文件再原子替换。
+        let bytes = out.toArray()
+        let rwTmp = filePath + ".rw"
+        writeAllBytes(rwTmp, bytes)
+        moveFile(rwTmp, filePath)
+        return Int64(bytes.size)
+    } catch (e: Exception) {
+        return size
+    }
+}
+
 func handleProxy(ctx: HttpContext, ip: String, path: String, head: Bool): Unit {
     let parts = routeSegments(path)
     if (parts.size < 3) {
@@ -330,9 +510,10 @@ func handleProxy(ctx: HttpContext, ip: String, path: String, head: Bool): Unit {
         throw HttpError(400, "invalid repo name")
     }
     let subPath = joinSegments(parts, 2)
-    requireRepoPermission(ctx, ip, repo, "can_download")
+    let repoRow = getRepo(repo)
+    requireProxyAccess(ctx, ip, repo, repoRow)
     let urls = ArrayList<String>()
-    for (base in upstreamUrls(getRepo(repo))) {
+    for (base in proxyUpstreamBases(repoRow, subPath)) {
         urls.add(base + "/" + subPath)
     }
     let range = headerOrEmpty(ctx.request, "range")
@@ -654,6 +835,8 @@ func downloadAndRespond(ctx: HttpContext, targets: ArrayList<String>, repoName: 
                     (e)
                 }
             }
+            let repoRow = getRepo(repoName)
+            size = rewriteProxyFile(ctx, repoRow, repoName, path, contentType, tmp, size)
             var savedPath = ""
             try {
                 verifyMetadata(repoName, path, tmp, ip)
@@ -673,7 +856,6 @@ func downloadAndRespond(ctx: HttpContext, targets: ArrayList<String>, repoName: 
                 "etag=excluded.etag, fetched_at=datetime('now', 'localtime'), verified=?",
                 [DbText(repoName), DbText(path), DbText(upstreamUrl), DbText(savedPath),
                  DbInt(size), DbText(typeValue), DbText(etag), DbInt(1), DbInt(1)])
-            let repoRow = getRepo(repoName)
             let quota = vInt(repoRow, "quota_mb")
             if (quota > 0) {
                 enforceQuota(repoName, quota)

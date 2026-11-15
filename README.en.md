@@ -11,6 +11,14 @@ One entry point for every package source in your network, with local caching, ac
 
 > ModernMirror is not affiliated with Nexus, Verdaccio, or similar projects. It is an independent implementation.
 
+## What's new in 1.1.25
+
+- Settings are available to every role: regular users can enable or disable their own MFA and manage their own API keys
+- Repositories can allow anonymous downloads, which solves plain-HTTP clients such as Go and CocoaPods that cannot send credentials
+- Client configuration for 15 ecosystems, with a "Configure" button available to regular users for repositories they can read
+- Absolute download URLs in npm, pub, crates, and NuGet metadata are rewritten back to this proxy so artifacts are cached
+- The built-in AI configuration skill at `skills/SKILL.md` is served at `/skill/modernmirror-config/SKILL.md`
+
 ## Design goals
 
 - **Single binary**: the build output is one executable, with no extra language runtime or virtual environment
@@ -21,12 +29,14 @@ One entry point for every package source in your network, with local caching, ac
 ## Features
 
 - **Transparent proxy cache**: the first request fetches from upstream and stores the artifact; later requests read from local disk. ETag revalidation and `X-Cache-Status` are supported
-- **Many ecosystems out of the box**: PyPI, npm, Go Modules, Maven, NuGet, RubyGems, and file-based apt repositories
+- **Many ecosystems out of the box**: PyPI, npm, Go Modules, Maven/Gradle, NuGet, RubyGems, Crates, Conan, pub, Hex, Hackage, CRAN, LuaRocks, CocoaPods, and apt
+- **Anonymous read-only repositories**: enable anonymous downloads per repository; uploads and private package APIs still require authentication
+- **Response rewriting**: npm `dist.tarball`, pub `archive_url`, crates `config.json.dl`, and NuGet service-index `@id` values point back to this proxy
 - **Upstream failover**: each repository supports a primary upstream plus ordered fallbacks
 - **Cache governance**: per-repository hit and size statistics, quotas, LRU eviction, retention cleanup, and a daily scheduled cleanup
 - **Private packages**: upload internal artifacts, download them directly, and expose a PEP 503 simple index
 - **Users and permissions**: multi-user login, group-to-repository read and write matrix, and bulk member import
-- **MFA**: standard TOTP compatible with any authenticator, plus enforcement policy and admin reset
+- **MFA**: standard TOTP compatible with any authenticator, with enforcement policy, self-service toggling, and admin reset
 - **API keys**: issue and revoke credentials for automation and command line use
 - **Integrity checks**: PyPI index hashes and npm `integrity` values are verified before anything is cached
 - **Security**: PBKDF2-SM3 for passwords, SM4 in authenticated mode for sensitive data, legacy data migration supported
@@ -108,7 +118,7 @@ Linux and macOS can be deployed directly. Native Windows builds are not supporte
 | System | Architecture | Status |
 |---|---|---|
 | Linux | x86_64 | Supported |
-| Linux | aarch64 | Configured, not tested |
+| Linux | aarch64 | Supported, tested on fnOS |
 | macOS | arm64 | Supported, tested |
 | macOS | x86_64 | Configured, not tested |
 | Windows | x86_64 | No native build yet, use WSL2 |
@@ -251,12 +261,18 @@ Proxy URL format:
 http://<host>:8800/proxy/<repo>/<original path>
 ```
 
-Authentication sources, in priority order:
+Authentication sources (choose what your client supports):
 
 1. `Session-Token: <API key>` header
 2. `Authorization: Bearer <API key>` header
 3. HTTP Basic with any username and the API key as password
 4. `?token=<API key>` query parameter
+
+`?token=` is fine for one-off `curl` calls, but most package managers will fold the token into a sub-path or drop the query string when requesting package files. Prefer Basic auth or the client's own token setting.
+
+### Anonymous read-only repositories
+
+Every repository has an "allow anonymous downloads" switch. When enabled, reads through the proxy no longer require a login; uploads and private package APIs still require authentication. Enable it for clients such as Go and CocoaPods that cannot send credentials over plain HTTP.
 
 ### Ecosystem examples
 
@@ -271,14 +287,16 @@ pip install requests
 
 ```bash
 npm config set registry "http://HOST:8800/proxy/npm/"
-npm config set //HOST:8800/:_authToken "<API_KEY>"
+npm config set //HOST:8800/proxy/npm/:_authToken "<API_KEY>"
 npm install antd
 ```
 
 **Go Modules**
 
 ```bash
-export GOPROXY="http://HOST:8800/proxy/go/"
+# plain HTTP cannot carry credentials; enable anonymous downloads for this repo
+export GOPROXY="http://HOST:8800/proxy/go"
+export GOSUMDB=off
 go get example.com/module@latest
 ```
 
@@ -297,6 +315,12 @@ go get example.com/module@latest
 ```bash
 deb http://mm:<API_KEY>@HOST:8800/proxy/debian bookworm main
 ```
+
+NuGet, RubyGems, Crates, Conan, pub, Hex, Hackage, CRAN, LuaRocks and CocoaPods are covered by the built-in docs page; the "Client config" button on each repository row generates a ready-to-copy command for that repository type.
+
+### Response rewriting
+
+The server rewrites npm `dist.tarball`, pub `archive_url`, crates `config.json.dl` and NuGet v3 service-index `@id` values back to this proxy, so package files also flow through the cache. For crates use `https://index.crates.io` as the upstream (the generated `config.json` includes `auth-required` based on the anonymous setting). For NuGet use `https://api.nuget.org`; cross-host 302 redirects are followed server-side.
 
 See the built-in documentation page for more clients, or use `skills/SKILL.md` to let an AI tool configure and roll back the settings.
 
@@ -375,7 +399,7 @@ Rebuild:
 
 The binary is written to `target/release/bin/main`. It needs the Cangjie runtime libraries at runtime; `scripts/run.sh` sets the paths automatically.
 
-Run the self check, which covers health, login, repositories, and the API docs:
+Run the self check, which covers health, login, repositories, the API docs, and the built-in AI skill:
 
 ```bash
 ./scripts/smoke.sh
@@ -383,12 +407,16 @@ Run the self check, which covers health, login, repositories, and the API docs:
 
 ### End-to-end tests
 
-The end-to-end tests need a fresh data directory and working access to the public npm registry:
+Both test scripts create and delete users and repositories, so start the service with a fresh data directory for each one. `proxy_test.py` also needs access to the public npm and crates registries:
 
 ```bash
-rm -rf /tmp/mmtest && MODERNMIRROR_DATA=/tmp/mmtest MODERNMIRROR_PORT=8899 ./scripts/run.sh &
+# APIs, permissions, MFA, and the built-in skill
+rm -rf /tmp/mm-api && MODERNMIRROR_DATA=/tmp/mm-api MODERNMIRROR_PORT=8899 ./scripts/run.sh &
 MM_BASE=http://127.0.0.1:8899 python3 tests/api_test.py
-MM_BASE=http://127.0.0.1:8899 python3 tests/proxy_test.py
+
+# Proxy cache, anonymous repositories, response rewriting, and quotas
+rm -rf /tmp/mm-proxy && MODERNMIRROR_DATA=/tmp/mm-proxy MODERNMIRROR_PORT=8898 ./scripts/run.sh &
+MM_BASE=http://127.0.0.1:8898 python3 tests/proxy_test.py
 ```
 
 `MM_BASE` is the service address used by the test scripts. It must match the listen address and port used when starting the service, and defaults to `http://127.0.0.1:8899`.

@@ -12,31 +12,40 @@ description: 将本机的 pip, npm, Go, Maven/Gradle, apt/yum 等软件源配置
 - PORT: 服务端口, 默认 8800
 - TOKEN: API 密钥, 在应用 Web 界面 系统设置 - API 密钥管理 中生成
 
-通用代理地址格式:
-`http://$HOST:$PORT/proxy/<仓库名>/?token=$TOKEN`
+通用代理地址: `http://$HOST:$PORT/proxy/<仓库名>/`, 其后的子路径原样转发到上游。
+
+鉴权方式:
+- 需要鉴权时优先用 Basic: `http://任意用户名:$TOKEN@$HOST:$PORT/proxy/<仓库名>/`
+- 也支持请求头 `Session-Token: $TOKEN`、`X-Auth-Token: $TOKEN`、`Authorization: Bearer $TOKEN`
+- 仓库开启「允许匿名下载」后无需携带 TOKEN
+- `?token=$TOKEN` 只适合 curl 单次请求; 包管理器的子请求会丢失 query 或把 token 拼进路径, 不要使用
 
 ## 执行原则
 1. 修改任何配置前, 先备份原文件为同目录 .bak-mm 后缀。
 2. 一次只处理一个生态, 完成后立即执行该生态的验证命令。
 3. TOKEN 只写入包管理器自身配置或用户 shell 环境文件, 不写入项目代码文件。
 4. 请求 401/403 时提示检查密钥与用户组权限（注意:即使是管理员也要将自己添加到相应用户组）; 502 或哈希校验失败时建议查看应用审计日志。
+5. 纯 HTTP 部署下 Go、CocoaPods 等无法携带凭据, 应引导用户为对应仓库开启「允许匿名下载」, 或改用 HTTPS 反向代理。
 
 ## 各生态操作
 
-所有生态的操作逻辑一致, 仅"配置入口文件位置"不同:
-1. 确认镜像仓库页面已存在对应类型的仓库。
-2. 将该生态配置文件中的默认源地址替换为通用代理地址 `http://$HOST:$PORT/proxy/<仓库名>/?token=$TOKEN`。
-3. 修改前后均以 curl 验证代理地址可达, 修改后执行一次该生态的默认安装/查询命令进行验证。
-4. 回滚时恢复修改前的备份文件。
+先确认镜像仓库页面已存在对应类型的仓库与正确上游。应用内「镜像仓库」页每行的「客户端配置」按钮会按类型生成可直接复制的命令, 优先采用它。
+
+- **pip**: `pip config set global.index-url "http://任意用户名:$TOKEN@$HOST:$PORT/proxy/<仓库>/simple/"`; HTTP 部署再加 `global.trusted-host=$HOST`。
+- **npm**: registry 设为 `http://$HOST:$PORT/proxy/<仓库>/`, 再执行 `npm config set //$HOST:$PORT/proxy/<仓库>/:_authToken "$TOKEN"`; registry 地址不能带 query。
+- **Go**: `export GOPROXY="http://$HOST:$PORT/proxy/<仓库>"`、`export GOSUMDB=off`; 必须使用匿名仓库。
+- **Maven/Gradle**: `settings.xml` 的 mirror 指向代理, 同 id 的 `<server>` 填任意用户名与 TOKEN。
+- **NuGet**: `dotnet nuget add source "http://$HOST:$PORT/proxy/<仓库>/v3/index.json" --username modernmirror --password "$TOKEN" --store-password-in-clear-text`; 上游用 `https://api.nuget.org`。
+- **RubyGems**: `bundle config mirror.https://rubygems.org "http://任意用户名:$TOKEN@$HOST:$PORT/proxy/<仓库>"`, 或用 `gem sources` 替换。
+- **Cargo**: `~/.cargo/config.toml` 用 `sparse+http://$HOST:$PORT/proxy/<仓库>/` 替换 `crates-io`, 需要时在 `[registries]` 下配 token; 上游用 `https://index.crates.io`。
+- **Conan**: `conan remote add <名> "http://$HOST:$PORT/proxy/<仓库>" --insecure`, 再 `conan remote login` 写入凭据。
+- **pub**: `export PUB_HOSTED_URL="http://$HOST:$PORT/proxy/<仓库>"`, 令牌用 `dart pub token add $HOST:$PORT`。
+- **Hex**: `mix hex.repo add <名> "http://$HOST:$PORT/proxy/<仓库>" --public-key hex.pm.pem --auth-key "$TOKEN"`。
+- **Hackage / CRAN / LuaRocks / CocoaPods / apt**: 按各自配置项把源地址指向代理; CocoaPods 在 HTTP 下必须使用匿名仓库。
+- 回滚时恢复修改前的备份文件。
 
 通用示例 - 验证代理可达:
-`curl "http://$HOST:$PORT/proxy/<仓库名>/?token=$TOKEN"`
-
-通用示例 - 环境变量型源 (适用于 GOPROXY 等):
-`export <生态的源环境变量>="http://$HOST:$PORT/proxy/<仓库名>/?token=$TOKEN"`
-
-常见的配置文件型源 (pip/npm/Maven 等) 做法:
-`<生态的源配置命令/文件> 设置默认源为 "http://$HOST:$PORT/proxy/<对应仓库名>/?token=$TOKEN"`
+`curl -u "x:$TOKEN" "http://$HOST:$PORT/proxy/<仓库名>/"`（匿名仓库可省略 `-u`）
 
 ## 成员批量导入
 

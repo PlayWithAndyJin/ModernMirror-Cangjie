@@ -48,5 +48,6 @@ curl -sf -H "Session-Token: $TOKEN" "http://127.0.0.1:$PORT/admin/repos" | grep 
 curl -sf -H "Session-Token: $TOKEN" "http://127.0.0.1:$PORT/admin/users" | grep -q "admin"
 curl -sf -H "Session-Token: $TOKEN" "http://127.0.0.1:$PORT/docs" >/dev/null
 curl -sf -H "Session-Token: $TOKEN" "http://127.0.0.1:$PORT/openapi.json" | grep -q "ModernMirror"
+curl -sf -H "Session-Token: $TOKEN" "http://127.0.0.1:$PORT/skill/modernmirror-config/SKILL.md" | grep -q "modernmirror-config"
 
 echo "自检通过"
