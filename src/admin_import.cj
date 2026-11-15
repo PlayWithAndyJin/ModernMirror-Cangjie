@@ -366,7 +366,7 @@ func adminImportMembers(ctx: HttpContext, ip: String, rawGid: String): Unit {
     let lower = part.filename.toAsciiLower()
     if (!(lower.endsWith(".csv") || lower.endsWith(".json") ||
         lower.endsWith(".toml") || lower.endsWith(".txt"))) {
-        throw HttpError(400, "仅支持 CSV / JSON / TOML / TXT 文件")
+        throw HttpError(400, "仅支持 CSV、JSON、TOML、TXT 文件")
     }
     if (Int64(part.data.size) > 2 * 1024 * 1024) {
         throw HttpError(400, "文件超过 2MB")

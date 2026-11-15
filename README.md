@@ -24,20 +24,20 @@
 
 - **路径级透明代理**：`/proxy/<仓库>/<原始路径>` 按仓库透传到上游，保留子路径与查询串，客户端无需理解缓存层
 - **内容寻址缓存**：缓存文件按 `SHA-256(repo:path)` 分片落盘，临时文件写完后原子重命名，命中时直接从磁盘流式返回
-- **条件请求与分段传输**：保留上游 `ETag`，支持 `If-None-Match`/304 复用、`Range` 206 与 416 响应；冷缓存 Range 会先取完整文件并校验，再返回分段
-- **上游故障转移与降级**：主源、备用源按序尝试，上游 5xx 或超时后回退旧缓存；`X-Cache-Status` 暴露 `fresh`/`hit`/`revalidated`/`stale` 状态
+- **条件请求与分段传输**：保留上游 `ETag`，支持 `If-None-Match` 条件请求与 304 复用、`Range` 206 与 416 响应；冷缓存 Range 会先取完整文件并校验，再返回分段
+- **上游故障转移与降级**：主源、备用源按序尝试，上游 5xx 或超时后回退旧缓存；`X-Cache-Status` 暴露 `fresh`、`hit`、`revalidated`、`stale` 四种状态
 
 ### 生态与协议
 
-- **15 种生态**：PyPI、npm、Go Modules、Maven/Gradle、NuGet、RubyGems、Crates、Conan、Dart pub、Hex、Hackage、CRAN、LuaRocks、CocoaPods 与 apt/apk/dnf/pacman 文件型源
+- **15 种生态**：PyPI、npm、Go Modules、Maven 与 Gradle、NuGet、RubyGems、Crates、Conan、Dart pub、Hex、Hackage、CRAN、LuaRocks、CocoaPods 与 apt、apk、dnf、pacman 文件型源
 - **元数据地址改写**：PyPI simple 索引的 `files.pythonhosted.org`、npm `dist.tarball`、pub `archive_url`、crates `config.json.dl` 与 NuGet v3 `@id` 统一改写回代理；crates 包路径映射到 `static.crates.io`
-- **跨主机重定向与 SNI**：服务端手动跟随最多 5 次 302，每个跳转目标按自身主机重建 TLS 客户端并设置 SNI，覆盖 NuGet/CDN 等跨域场景
+- **跨主机重定向与 SNI**：服务端手动跟随最多 5 次 302，每个跳转目标按自身主机重建 TLS 客户端并设置 SNI，覆盖 NuGet 与 CDN 等跨域场景
 - **私有包托管**：支持上传、直接下载与 PEP 503 简单索引，私有包接口独立鉴权
 
 ### 权限与安全
 
 - **多凭证认证**：HTTP Basic（用户名任意、密码填 API 密钥）、`Authorization: Bearer`、`Session-Token`、`X-Auth-Token` 与 `?token=` 单次请求参数
-- **组级 ACL 与匿名只读**：用户组到仓库的 `can_download`/`can_upload` 权限矩阵；仓库可按需开启匿名读取，上传与私有包接口仍需鉴权；管理员访问代理同样受组权限约束
+- **组级 ACL 与匿名只读**：用户组到仓库的 `can_download` 与 `can_upload` 权限矩阵；仓库可按需开启匿名读取，上传与私有包接口仍需鉴权；管理员访问代理同样受组权限约束
 - **会话与 API 密钥**：会话令牌只保存 SM3 哈希并支持滑动过期；API 密钥仅保存前缀与哈希，可随时单独吊销
 - **TOTP 二次认证**：标准 TOTP，兼容任意认证器，支持普通用户自助开关、管理员强制策略与重置
 - **完整性校验**：PyPI 比对索引哈希，npm 比对 `dist.integrity`，校验失败拒绝落盘并记录审计，防止缓存被篡改的产物
@@ -46,7 +46,7 @@
 
 ### 运维与可观测
 
-- **缓存治理**：仓库级容量配额，超限按 `last_hit_at`/`hits` 做 LRU 淘汰；支持保留天数清理与每日自动清理
+- **缓存治理**：仓库级容量配额，超限按 `last_hit_at` 与 `hits` 做 LRU 淘汰；支持保留天数清理与每日自动清理
 - **统计与接口文档**：按仓库统计命中率、文件数与占用空间，内置 `/docs`、`/redoc` 与 `/openapi.json`
 - **单可执行文件与 SQLite WAL**：无外部服务依赖，元数据与缓存分离，数据库开启 WAL 与 30 秒忙等待
 - **内置接入文档与 AI 技能**：Web 文档覆盖 15 类客户端配置，`/skill/modernmirror-config/SKILL.md` 可供 AI 工具直接读取并执行配置或回滚
@@ -79,7 +79,7 @@
 ## 技术架构
 
 ```
-客户端 pip / npm / curl / apt
+客户端 pip、npm、curl、apt
         │
         ▼
   stdx.net.http 自定义路由
@@ -230,7 +230,7 @@ MODERNMIRROR_PORT=8800 \
 - 管理界面 `http://localhost:8800/ui/`
 - 接口文档 `http://localhost:8800/docs`，另有 `http://localhost:8800/redoc`，均需要管理员登录
 
-首次启动会创建管理员 `admin / admin123`，并自动生成 `data/master.key`。**请立即登录修改密码，并在系统设置中生成 API 密钥。**
+首次启动会创建管理员用户名 `admin`、密码 `admin123`，并自动生成 `data/master.key`。**请立即登录修改密码，并在系统设置中生成 API 密钥。**
 
 ### 迁移已有数据目录
 
@@ -287,7 +287,7 @@ http://<主机>:8800/proxy/<仓库名>/<原始路径>
 
 ### 各生态示例
 
-**Python / pip**（Basic 认证，密码位置填密钥）
+**Python 与 pip**（Basic 认证，密码位置填密钥）
 
 ```bash
 pip config set global.index-url "http://mm:<API_KEY>@HOST:8800/proxy/pypi/simple/"
@@ -295,7 +295,7 @@ pip config set global.trusted-host HOST          # 仅 HTTP 部署需要
 pip install requests
 ```
 
-**Node.js / npm**（令牌写进 `.npmrc`，不能放在 registry 的 query 里）
+**Node.js 与 npm**（令牌写进 `.npmrc`，不能放在 registry 的 query 里）
 
 ```bash
 npm config set registry "http://HOST:8800/proxy/npm/"
@@ -311,7 +311,7 @@ export GOSUMDB=off
 go get example.com/module@latest
 ```
 
-**Maven / Gradle**（凭据放在同 id 的 `<server>` 中）
+**Maven 与 Gradle**（凭据放在同 id 的 `<server>` 中）
 
 ```xml
 <mirror>

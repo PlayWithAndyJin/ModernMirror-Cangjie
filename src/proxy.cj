@@ -335,7 +335,7 @@ func verifyMetadata(repoName: String, path: String, filePath: String, ip: String
                 detail.put("expected", jStr(algo + ":" + digest))
                 detail.put("got", jStr(got))
                 audit("verify.fail", ip, detail)
-                throw HttpError(502, "上游返回的 " + algo + " 校验不匹配, 已拒绝缓存 (疑似投毒/篡改): " + path)
+                throw HttpError(502, "上游返回的 " + algo + " 校验不匹配, 已拒绝缓存 (疑似投毒或篡改): " + path)
             }
             return true
         case None =>

@@ -87,7 +87,7 @@ export default function Docs() {
           <Li>系统校验登录态及其对相应仓库的下载权限。</Li>
           <Li>查询本地缓存, 命中时直接从磁盘读取文件返回。</Li>
           <Li>未命中时向上游仓库拉取产物, 完成完整性校验后写入缓存并返回。</Li>
-          <Li>响应头 X-Cache-Status 可用于观测 hit / fresh / revalidated / stale 四种状态。</Li>
+          <Li>响应头 X-Cache-Status 可用于观测 hit、fresh、revalidated、stale 四种状态。</Li>
         </ol>
       </Block>
 
@@ -129,7 +129,7 @@ export default function Docs() {
           <Li>conan: <Text code>conan remote add</Text> 指向代理, 再用 <Text code>conan remote login</Text> 写入账号。</Li>
           <Li>pub: <Text code>PUB_HOSTED_URL</Text> 指向代理, 令牌用 <Text code>dart pub token add</Text> 写入(按主机保存)。</Li>
           <Li>hex: <Text code>mix hex.repo add</Text> 需要同时提供 hex.pm 公钥与 auth-key。</Li>
-          <Li>hackage、cran、luarocks、cocoapods 与通用文件(apt/apk/dnf/pacman)分别按各自配置项指向代理地址即可。</Li>
+          <Li>hackage、cran、luarocks、cocoapods 与通用文件(apt、apk、dnf、pacman)分别按各自配置项指向代理地址即可。</Li>
         </ol>
         <Paragraph type="secondary">
           服务端会把 pypi 索引里的 <Text code>files.pythonhosted.org</Text>、npm 的 <Text code>dist.tarball</Text>、
@@ -169,7 +169,7 @@ export default function Docs() {
         </ol>
         <Paragraph><b>成员批量导入</b></Paragraph>
         <Paragraph>
-          入口位于用户组权限页面每一行的「批量导入」按钮。支持 CSV / JSON / TOML / TXT 四种格式,
+          入口位于用户组权限页面每一行的「批量导入」按钮。支持 CSV、JSON、TOML、TXT 四种格式,
           可在导入弹窗内直接下载对应模板。
         </Paragraph>
         <ol style={{ paddingLeft: 20 }}>

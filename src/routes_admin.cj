@@ -781,7 +781,7 @@ func adminUploadPackage(ctx: HttpContext, ip: String, repo: String): Unit {
     }
     if (repo.isEmpty() || repo.startsWith(".") || repo.contains("/") ||
         repo.contains("\\") || repo == "default") {
-        throw HttpError(400, "请在「仓库路径名」输入具体的仓库名后再上传 (如 pypi / mypkg)")
+        throw HttpError(400, "请在「仓库路径名」输入具体的仓库名后再上传 (如 pypi、mypkg)")
     }
     let part = multipartFile(ctx.request, (MAX_UPLOAD_MB + 4) * 1024 * 1024)
     let uploader = if (actor.hasUser()) { actor.username() } else { "cli" }

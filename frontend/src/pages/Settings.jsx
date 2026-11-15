@@ -147,7 +147,7 @@ function ApiTokenCard({ user }) {
       >
         <Input
           value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="密钥备注名, 如 Jenkins 构建 / 我的笔记本 pip"
+          placeholder="密钥备注名, 如 Jenkins 构建、我的笔记本 pip"
           onPressEnter={create}
         />
       </Modal>
@@ -262,7 +262,7 @@ export function MfaMyCard({ user }) {
     <Card title="我的 MFA (TOTP 动态码)" style={{ marginBottom: 16 }}>
       <ol style={{ lineHeight: 2 }}>
         <li>点击下方按钮生成密钥</li>
-        <li>用手机认证 App(Google Authenticator / 微软 / 1Password 等)扫二维码或手动输入密钥</li>
+        <li>用手机认证 App(Google Authenticator、微软、1Password 等)扫二维码或手动输入密钥</li>
         <li>输入 App 显示的 6 位动态码确认</li>
       </ol>
       {state.secret ? (

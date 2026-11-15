@@ -15,7 +15,7 @@ const typeColor = {
 
 const TEMPLATES = [
   { value: 'tmpl-go', label: 'Go Modules (GOPROXY)', type: 'go', upstream: 'https://proxy.golang.org' },
-  { value: 'tmpl-maven', label: 'Maven Central (Maven/Gradle/SBT)', type: 'maven', upstream: 'https://repo1.maven.org/maven2' },
+  { value: 'tmpl-maven', label: 'Maven Central (Maven、Gradle、SBT)', type: 'maven', upstream: 'https://repo1.maven.org/maven2' },
   { value: 'tmpl-nuget', label: 'NuGet (.NET)', type: 'nuget', upstream: 'https://api.nuget.org' },
   { value: 'tmpl-rubygems', label: 'RubyGems', type: 'rubygems', upstream: 'https://rubygems.org' },
   { value: 'tmpl-crates', label: 'Rust Crates (sparse 索引)', type: 'crates', upstream: 'https://index.crates.io' },
@@ -169,7 +169,7 @@ export default function Repos() {
       render: (_, r) => {
         if (!(r.name in latency)) return <Tag> 测量中…</Tag>
         const ms = latency[r.name]
-        if (ms < 0) return <Tag color="red">超时/故障</Tag>
+        if (ms < 0) return <Tag color="red">超时或故障</Tag>
         const color = ms < 300 ? 'green' : ms < 1200 ? 'orange' : 'red'
         return <Tag color={color}>{ms} ms</Tag>
       }
@@ -407,7 +407,7 @@ export default function Repos() {
                 { value: 'pypi', label: 'PyPI (pip)' },
                 { value: 'npm', label: 'npm' },
                 { value: 'go', label: 'Go Modules (GOPROXY)' },
-                { value: 'maven', label: 'Maven / Gradle / SBT' },
+                { value: 'maven', label: 'Maven、Gradle、SBT' },
                 { value: 'nuget', label: 'NuGet (.NET)' },
                 { value: 'rubygems', label: 'RubyGems' },
                 { value: 'crates', label: 'crates 静态文件' },
@@ -418,7 +418,7 @@ export default function Repos() {
                 { value: 'cran', label: 'CRAN (R)' },
                 { value: 'luarocks', label: 'LuaRocks' },
                 { value: 'cocoapods', label: 'CocoaPods' },
-                { value: 'raw', label: '通用文件 (apt/yum 等)' }
+                { value: 'raw', label: '通用文件 (apt、yum 等)' }
               ]}
             />
           </Form.Item>

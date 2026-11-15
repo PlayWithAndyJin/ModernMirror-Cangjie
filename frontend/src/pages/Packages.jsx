@@ -35,7 +35,7 @@ export default function Packages() {
 
   const upload = async ({ file, onSuccess, onError }) => {
     if (!uploadRepo || !uploadRepo.trim()) {
-      message.error('请先在上方填写仓库名 (如 pypi / mypkg), 再上传私有包')
+      message.error('请先在上方填写仓库名 (如 pypi、mypkg), 再上传私有包')
       onError(new Error('missing repo name'), file)
       return
     }
@@ -120,7 +120,7 @@ export default function Packages() {
         footer={null}
       >
         <Input
-          placeholder="仓库名 (必填, 如 pypi / mypkg)"
+          placeholder="仓库名 (必填, 如 pypi、mypkg)"
           value={uploadRepo}
           onChange={(e) => setUploadRepo(e.target.value)}
           style={{ marginBottom: 16 }}

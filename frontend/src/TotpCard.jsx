@@ -24,7 +24,7 @@ export default function TotpCard({ nonce, onDone, busy, setBusy }) {
         <Card style={{ borderRadius: 12, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
           <Typography.Title level={4} style={{ textAlign: 'center' }}>MFA 二次认证</Typography.Title>
           <Typography.Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
-            请输入认证器 App (Google/MS/iCloud 等)中的 6 位动态码
+            请输入认证器 App (Google、MS、iCloud 等)中的 6 位动态码
           </Typography.Text>
           <Input
             id="fnm-totp" size="large" maxLength={6} autoFocus
