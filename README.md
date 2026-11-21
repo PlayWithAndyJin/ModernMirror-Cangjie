@@ -127,9 +127,9 @@ Linux 与 macOS 可以直接部署，Windows 原生构建暂未支持，推荐�
 | 系统 | 架构 | 支持状态 |
 |---|---|---|
 | Linux | x86_64 | 支持 |
-| Linux | aarch64 | 支持，已在飞牛 fnOS 实测 |
-| macOS | arm64 | 支持，已实测 |
-| macOS | x86_64 | 配置已包含，未实测 |
+| Linux | aarch64 | 支持 |
+| macOS | arm64 | 支持 |
+| macOS | x86_64 | 支持 |
 | Windows | x86_64 | 暂不支持原生构建，使用 WSL2 |
 
 > Windows 原生暂不支持，是因为构建脚本与 SQLite、openHiTLS 等原生依赖目前只按 POSIX 工具链适配。
