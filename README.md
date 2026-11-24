@@ -4,8 +4,8 @@
 
 <h1 align="center">ModernMirror Cangjie</h1>
 
-<p align="center"><strong>用仓颉语言编写的自托管软件源代理缓存系统。</strong><br>
-为团队内网提供统一的软件源入口，缓存落盘，权限可控，数据可迁移。</p>
+<p align="center"><strong>用仓颉语言编写的自托管软件源代理缓存系统</strong><br>
+为团队内网提供统一的软件源入口，缓存落盘，权限可控，数据可迁移</p>
 
 <p align="center"><a href="README.en.md">English</a> | 简体中文</p>
 
@@ -15,7 +15,7 @@
 
 - **单文件部署**：编译产物是单个可执行文件，无需额外语言运行时与虚拟环境
 - **启动更快**：冷启动在毫秒级，适合容器与低配设备
-- **安全底座**：以 [openHiTLS](https://gitcode.com/openHiTLS/openHiTLS) 为主，仓颉 stdx 兜底，国密算法走 openHiTLS 原生实现
+- **安全底座**：以 [openHiTLS](https://gitcode.com/openHiTLS/openHiTLS) 为主，仓颉 stdx 兜底，安全算法走 openHiTLS 原生实现
 - **数据自洽**：数据库、密文与主密钥集中在数据目录，整体复制即可完成迁移或备份
 
 ## 特性
@@ -41,7 +41,7 @@
 - **会话与 API 密钥**：会话令牌只保存 SM3 哈希并支持滑动过期；API 密钥仅保存前缀与哈希，可随时单独吊销
 - **TOTP 二次认证**：标准 TOTP，兼容任意认证器，支持普通用户自助开关、管理员强制策略与重置
 - **完整性校验**：PyPI 比对索引哈希，npm 比对 `dist.integrity`，校验失败拒绝落盘并记录审计，防止缓存被篡改的产物
-- **国密安全**：密码使用 PBKDF2-SM3，敏感数据采用 SM4-CBC 加密并以 HMAC-SM3 做完整性保护，兼容旧版数据迁移
+- **数据安全**：密码使用 PBKDF2-SM3，敏感数据采用 SM4-CBC 加密并以 HMAC-SM3 做完整性保护，兼容旧版数据迁移
 - **加密审计日志**：登录、仓库变更、上传删除、权限调整与校验失败事件加密落盘
 
 ### 运维与可观测
