@@ -175,7 +175,7 @@ wsl --install -d Ubuntu-22.04
 ### 一键部署
 
 ```bash
-git clone https://192.168.3.42:28361/andyjin/ModernMirror-Cangjie.git
+git clone https://github.com/PlayWithAndyJin/ModernMirror-Cangjie.git
 cd ModernMirror-Cangjie
 ./scripts/setup.sh
 ./scripts/build.sh
