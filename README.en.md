@@ -4,8 +4,8 @@
 
 <h1 align="center">ModernMirror Cangjie</h1>
 
-<p align="center"><strong>A self-hosted package mirror and proxy cache written in Cangjie.</strong><br>
-One entry point for every package source in your network, with local caching, access control, and portable data.</p>
+<p align="center"><strong>A self-hosted package mirror and proxy cache written in Cangjie</strong><br>
+One entry point for every package source in your network, with local caching, access control, and portable data</p>
 
 <p align="center">English | <a href="README.md">简体中文</a></p>
 
@@ -15,7 +15,7 @@ One entry point for every package source in your network, with local caching, ac
 
 - **Single binary**: the build output is one executable, with no extra language runtime or virtual environment
 - **Fast startup**: cold start takes milliseconds, which suits containers and low-end devices
-- **Strong security foundation**: [openHiTLS](https://gitcode.com/openHiTLS/openHiTLS) as the primary provider and Cangjie stdx as the fallback, with native Chinese cryptographic algorithms
+- **Strong security foundation**: [openHiTLS](https://gitcode.com/openHiTLS/openHiTLS) as the primary provider and Cangjie stdx as the fallback, with native securit algorithms
 - **Self-contained data**: database, ciphertexts, and master key live together in the data directory, so a copy is enough to migrate or back up
 
 ## Features
@@ -41,7 +41,7 @@ One entry point for every package source in your network, with local caching, ac
 - **Sessions and API keys**: session tokens are stored as SM3 hashes with sliding expiry; API keys keep only a prefix and hash and can be revoked individually
 - **TOTP MFA**: standard TOTP compatible with any authenticator, with self-service toggling, an administrator enforcement policy, and admin reset
 - **Integrity verification**: PyPI index hashes and npm `dist.integrity` are checked before caching; mismatches are rejected and audited
-- **Chinese cryptography**: PBKDF2-SM3 for passwords, SM4-CBC with HMAC-SM3 for sensitive data, and backward-compatible data migration
+- **Data security**: PBKDF2-SM3 for passwords, SM4-CBC with HMAC-SM3 for sensitive data, and backward-compatible data migration
 - **Encrypted audit log**: logins, repository changes, uploads, deletions, permission changes, and integrity failures are encrypted at rest
 
 ### Operations and observability
@@ -175,7 +175,7 @@ wsl --install -d Ubuntu-22.04
 ### One-step deployment
 
 ```bash
-git clone https://192.168.3.42:28361/andyjin/ModernMirror-Cangjie.git
+git clone https://github.com/PlayWithAndyJin/ModernMirror-Cangjie.git
 cd ModernMirror-Cangjie
 ./scripts/setup.sh
 ./scripts/build.sh
